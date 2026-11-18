@@ -1,11 +1,9 @@
 <p align="center">
-  <img src="apps/pdfpack/assets/logo.png" width="148" alt="Logo do PDFPack: um canguru em fundo amarelo">
+  <img src="apps/pdfpack/assets/banner.png" alt="PDFPack: PDFs leves, prontos para enviar por e-mail">
 </p>
 
-<h1 align="center">PDFPack</h1>
-
 <p align="center">
-  <b>Deixa seus PDFs leves e separa tudo em pastas que cabem em um email.</b><br>
+  <b>Deixa seus PDFs leves e, se você quiser, separa tudo em pastas que cabem em um email.</b><br>
   Para Windows · gratuito · funciona sem internet
 </p>
 
@@ -37,6 +35,9 @@ um certo tamanho (25 MB no Gmail, por exemplo). O PDFPack faz as duas coisas que
 
 Se um único PDF for maior que o limite mesmo depois de comprimido, o PDFPack o **divide em partes**
 sozinho.
+
+As duas coisas são independentes. Se você só precisa de PDFs mais leves, comprima, salve e pronto:
+organizar para email é opcional.
 
 ## Como baixar e abrir
 
@@ -89,7 +90,9 @@ a porcentagem que diminuiu.
 
 Não gostou do resultado? Aperte **Ctrl+Z** para desfazer e tente outro nível.
 
-### 3. Organize para email
+### 3. Organize para email (opcional)
+
+Pule este passo se você só queria comprimir.
 
 Clique em **Organizar para email** e diga qual é o tamanho máximo que o seu email aceita. O
 PDFPack lembra do valor que você usou da última vez.
@@ -103,9 +106,11 @@ ocupando.
 
 ### 4. Salve
 
-Clique em **Salvar** (ou **Ctrl+S**) e escolha onde guardar. O PDFPack cria ali as pastas
-`Email 1`, `Email 2`… com os PDFs comprimidos dentro. Agora é só anexar o conteúdo de cada pasta
-em um email.
+Clique em **Salvar** (ou **Ctrl+S**) e escolha onde guardar.
+
+- **Se você organizou para email**, o PDFPack cria ali as pastas `Email 1`, `Email 2`… com os PDFs
+  dentro. Depois é só anexar o conteúdo de cada pasta em um email.
+- **Se você só comprimiu**, os PDFs comprimidos são gravados direto na pasta escolhida.
 
 **Seus arquivos originais nunca são alterados.** O PDFPack sempre grava cópias novas.
 

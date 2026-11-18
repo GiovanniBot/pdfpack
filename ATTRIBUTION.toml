@@ -2,6 +2,17 @@
 # ATTRIBUTION.md is generated from this file: `cargo xtask assets --write`. Checked by `cargo xtask assets` (part of `xtask ci`).
 #
 # [[asset]]
+path = "apps/pdfpack/assets/banner.png"
+title = "PDFPack: banner do README (canguru e nome)"
+author = "Giovanni Almeida (fornecido pelo autor do PDFPack)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "logo"
+usage = "Cabeçalho do README do PDFPack"
+sha256 = "473a6a0c1dd01c7a84418cefddf36c2ed9e567b606a794e5e348d3ff105c838c"
+
+[[asset]]
 path = "apps/pdfpack/screenshots/inicio.png"
 title = "Captura de tela do PDFPack: tela inicial"
 author = "Giovanni Almeida (captura do próprio aplicativo)"
@@ -10,7 +21,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "72d9dfa0ce2525510599a89530068e756a0f85e4ce188dc6121f12cf8a3db8fa"
+sha256 = "7212d42ff2b6b661a1c689f466fdc629b798a3a9f28d2f1c08486d20747ed058"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/lista.png"
@@ -21,7 +32,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "8035425d503302700da5edee750ad615a72a36e895cfbe7a0e279489aca3dfd3"
+sha256 = "41567b9e90dd09e5e13c05f63a767a7cb2cf1cf169a2af528e78b7969778766b"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/comprimir.png"
@@ -32,7 +43,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "b653c386aca823c507978dc428cdba0f67e6710060d04b572a2257564e9d0f46"
+sha256 = "4eb951a0c664c3c474313d8cb5a52af9dd3f06317392f7791388f85aa67850a0"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/resultado.png"
@@ -43,7 +54,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "1c472b64331c78b3a0555c38891a980effd4aa1a684871601e48e75321926ffe"
+sha256 = "3aad07bc833b74415dcb4d47a1a520bae90bfad07a67f3ca85a6dad6abcf9c3c"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/limite.png"
@@ -54,7 +65,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "b08e6f64d17774f6ad94756ccd2ad71e0b5eba269ef98dc214e1f8b4098c9e42"
+sha256 = "193ddc11538367de83e715dca8c87f0d887a8c64042148f9ae9d2df190e2a02e"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/emails.png"
@@ -65,7 +76,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "5330d55ff8c675725975ac456821a1692a99b76fa9582deb81269ed7011f887e"
+sha256 = "457a52388c695b7aab63a9cef88b963b62019d330e84f9a823590a8809809c28"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/atualizacao.png"

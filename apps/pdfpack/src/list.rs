@@ -22,17 +22,13 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
     let compressed = app.state.any_compressed();
     let organized = app.state.organized.is_some();
     let kind = |next: bool| if next { Kind::Primary } else { Kind::Outline };
-    let arrow = |ui: &mut Ui| {
-        let (rect, _) = ui.allocate_exact_size(vec2(12.0, 34.0), Sense::hover());
-        Icon::ChevronRight.paint(ui, rect.center(), 14.0, BORDER.gamma_multiply(1.8));
-    };
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        // O fluxo, da esquerda para a direita; o amarelo cheio aponta o próximo passo.
+        ui.spacing_mut().item_spacing.x = 8.0;
+        // Três ações independentes: quem só quer comprimir não precisa organizar. O amarelo cheio
+        // sugere a próxima, sem setas que façam parecer um caminho obrigatório.
         if theme::button(ui, Some(if compressed { Icon::Done } else { Icon::Compress }), "Comprimir", kind(!compressed), has_docs).on_hover_text("Reduz o tamanho dos PDFs marcados").clicked() {
             app.modal = Modal::CompressSetup;
         }
-        arrow(ui);
         if theme::button(ui, Some(if organized { Icon::Done } else { Icon::Mail }), "Organizar para email", kind(compressed && !organized), has_docs)
             .on_hover_text("Distribui os PDFs em pastas que cabem em um email")
             .clicked()
@@ -40,7 +36,6 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
             app.limit_text = app.prefs.email_limit_mb;
             app.modal = Modal::OrganizeSetup;
         }
-        arrow(ui);
         if theme::button(ui, Some(Icon::Save), "Salvar", kind(organized), has_docs).on_hover_text("Salva tudo em uma pasta (Ctrl+S)").clicked() {
             app.start_save(&ctx);
         }
@@ -119,7 +114,7 @@ pub fn empty(app: &mut App, ui: &mut Ui) {
 
     crate::viewer::toast(app, &ctx, pos2(rect.center().x, rect.max.y - 24.0));
 
-    // Os três passos, para quem abre o aplicativo pela primeira vez.
+    // O que o aplicativo faz, para quem o abre pela primeira vez; ações soltas, não uma sequência.
     let steps = [(Icon::Compress, "Comprimir"), (Icon::Mail, "Organizar para email"), (Icon::Save, "Salvar")];
     let font = theme::regular(12.5);
     let widths: Vec<f32> = steps.iter().map(|(_, t)| ui.painter().layout_no_wrap((*t).to_owned(), font.clone(), MUTED).size().x + 22.0).collect();
@@ -131,7 +126,7 @@ pub fn empty(app: &mut App, ui: &mut Ui) {
         ui.painter().text(pos2(x + 22.0, y), Align2::LEFT_CENTER, *text, font.clone(), MUTED);
         x += w;
         if i + 1 < steps.len() {
-            Icon::ChevronRight.paint(ui, pos2(x + 17.0, y), 13.0, BORDER.gamma_multiply(1.8));
+            ui.painter().circle_filled(pos2(x + 17.0, y), 1.5, BORDER.gamma_multiply(1.8));
             x += 34.0;
         }
     }

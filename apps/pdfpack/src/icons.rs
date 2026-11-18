@@ -30,7 +30,6 @@ icons! {
     Close => "../../../assets/icons/x.svg",
     Check => "../../../assets/icons/check.svg",
     Done => "../../../assets/icons/circle-check.svg",
-    ChevronRight => "../../../assets/icons/chevron-right.svg",
     Sort => "../../../assets/icons/arrow-up-down.svg",
     File => "../../../assets/icons/file-text.svg",
     Files => "../../../assets/icons/files.svg",
