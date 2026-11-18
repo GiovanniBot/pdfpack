@@ -56,6 +56,11 @@ impl Level {
             // A cópia de edição que Illustrator, InDesign e outros guardam dentro do PDF: nunca
             // aparece na página e pode ser maior que o próprio PDF.
             discard_private_data: true,
+            // Os metadados XMP que cada imagem traz do programa de diagramação: nunca aparecem.
+            // Os do documento (título, autor) ficam.
+            discard_image_metadata: true,
+            // Só na Extrema: comprimir de novo o desenho vetorial (sem perda, mas mais lento).
+            reflate: self == Level::Extrema,
             ..Settings::default()
         }
     }

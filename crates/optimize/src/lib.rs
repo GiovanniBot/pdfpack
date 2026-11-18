@@ -49,6 +49,8 @@ mod unused;
 
 pub use audit::{SpaceCategory, SpaceUse, audit_space};
 
+use std::collections::HashSet;
+
 use pdfcraft_cos::{Dict, Document, ImageBudget, MAX_PAGE_DECODED, ObjRef, Object, Stream, serialize};
 use pdfcraft_filters::{Filter, Params};
 
@@ -242,6 +244,18 @@ pub struct Settings {
     /// keeps a whole copy of its own document there, often larger than the PDF itself. The objects
     /// only it refers to are left out by the full save. Off by default.
     pub discard_private_data: bool,
+    /// Discard User Data: remove the `/Metadata` stream (XMP, ISO 32000-2 §14.3.2) of every
+    /// image XObject, and of the marked-content property lists that resources name (§14.6.2),
+    /// which is where layout programs such as InDesign and Illustrator attach each placed
+    /// picture's own XMP. It is never drawn. The property lists stay, so the content naming them
+    /// reads as before; optional content (layers) is not touched, nor is the document's
+    /// metadata, in the catalog. Off by default.
+    pub discard_image_metadata: bool,
+    /// Clean Up: decode Flate streams (one Flate filter, no parameters) and compress them with
+    /// Flate again, keeping the new data only when it is smaller. Lossless; it helps streams a
+    /// program compressed weakly, such as page content from a layout program. Slower, so off by
+    /// default.
+    pub reflate: bool,
 }
 
 impl Settings {
@@ -275,6 +289,8 @@ impl Default for Settings {
             remove_unreferenced_dests: true,
             discard_external_refs: false,
             discard_private_data: false,
+            discard_image_metadata: false,
+            reflate: false,
         }
     }
 }
@@ -352,6 +368,10 @@ pub struct Report {
     pub external_bookmarks: usize,
     /// Catalog, pages and forms whose `/PieceInfo` was removed (Discard private data).
     pub private_data: usize,
+    /// Images whose `/Metadata` was removed (Discard image metadata).
+    pub image_metadata: usize,
+    /// Flate streams compressed again smaller (Clean Up, [`Settings::reflate`]).
+    pub streams_reflated: usize,
     /// Images and forms the pages listed but never drew, dropped (Clean Up).
     pub unused_xobjects: usize,
 }
@@ -474,6 +494,7 @@ pub fn optimize_with_progress(doc: &mut Document, settings: &Settings, progress:
         report.external_bookmarks = b;
     }
     report.private_data = discard_private_data(doc, settings)?;
+    report.image_metadata = discard_image_metadata(doc, settings);
     if settings.remove_unreferenced_dests {
         report.unreferenced_dests = links::remove_unreferenced_dests(doc)?;
     }
@@ -494,6 +515,7 @@ pub fn optimize_with_progress(doc: &mut Document, settings: &Settings, progress:
             }
         }
     }
+    report.streams_reflated = reflate(doc, settings, progress)?;
     if settings.flate_unencoded {
         for num in doc.object_numbers() {
             let r = ObjRef { num, generation: doc.generation(num) };
@@ -732,6 +754,101 @@ fn discard_private_data(doc: &mut Document, settings: &Settings) -> Result<usize
                 n += 1;
             }
             _ => {}
+        }
+    }
+    Ok(n)
+}
+
+/// Remove `/Metadata` from every image XObject and from the marked-content property lists
+/// resources name ([`Settings::discard_image_metadata`]), and return from how many. Only property
+/// lists that are objects of their own are edited (layout programs write them so); one written
+/// in place in a resource dictionary stays as it is. The streams it held are left out by the
+/// full save unless something else refers to them. Nothing when the setting is off.
+fn discard_image_metadata(doc: &mut Document, settings: &Settings) -> usize {
+    if !settings.discard_image_metadata {
+        return 0;
+    }
+    // Property lists named by any resource dictionary: objects with /Resources (pages, page tree
+    // nodes, forms, patterns, Type 3 fonts), and resource dictionaries of their own.
+    let mut lists: HashSet<ObjRef> = HashSet::new();
+    for num in doc.object_numbers() {
+        let obj = doc.get(ObjRef { num, generation: doc.generation(num) });
+        let d = match &*obj {
+            Object::Dict(d) => d,
+            Object::Stream(s) => &s.dict,
+            _ => continue,
+        };
+        let properties = |res: &Dict| res.get(b"Properties").map(|p| doc.resolve(p));
+        let found = d.get(b"Resources").and_then(|r| doc.resolve(r).as_dict().and_then(properties)).or_else(|| properties(d));
+        if let Some(Object::Dict(p)) = found.as_deref() {
+            lists.extend(p.iter().filter_map(|(_, v)| v.as_ref()));
+        }
+    }
+    let mut n = 0;
+    for num in doc.object_numbers() {
+        let r = ObjRef { num, generation: doc.generation(num) };
+        let obj = doc.get(r);
+        match &*obj {
+            Object::Stream(s) if s.dict.name(b"Subtype") == Some(b"Image") && s.dict.contains(b"Metadata") => {
+                let mut s = s.clone();
+                s.dict.remove(b"Metadata");
+                doc.set(r, Object::Stream(s));
+                n += 1;
+            }
+            // A layer (optional content group or membership dictionary) keeps everything.
+            Object::Dict(d) if lists.contains(&r) && d.contains(b"Metadata") && !matches!(d.name(b"Type"), Some(b"OCG" | b"OCMD")) => {
+                let mut d = d.clone();
+                d.remove(b"Metadata");
+                doc.set(r, Object::Dict(d));
+                n += 1;
+            }
+            _ => {}
+        }
+    }
+    n
+}
+
+/// Flate compresses at most about 1032 to 1: data that decodes to more was not written by an
+/// encoder, and is left as it is.
+const MAX_FLATE_RATIO: usize = 1100;
+
+/// Compress Flate streams again ([`Settings::reflate`]) and return how many got smaller. Only
+/// streams with one Flate filter and no parameters, whose data decodes without damage (a
+/// damaged one is kept as written, as readers would read it); not cross-reference or object
+/// streams, which the save writes anew, nor XMP or external data. Nothing when the setting is
+/// off.
+fn reflate(doc: &mut Document, settings: &Settings, progress: &mut dyn FnMut(Stage) -> bool) -> Result<usize, OptimizeError> {
+    if !settings.reflate {
+        return Ok(0);
+    }
+    let mut n = 0;
+    for num in doc.object_numbers() {
+        let r = ObjRef { num, generation: doc.generation(num) };
+        let obj = doc.get(r);
+        let Object::Stream(s) = &*obj else { continue };
+        let one_flate = match s.dict.get(b"Filter") {
+            Some(Object::Name(f)) => f.as_slice() == b"FlateDecode",
+            Some(Object::Array(a)) => matches!(a.as_slice(), [Object::Name(f)] if f.as_slice() == b"FlateDecode"),
+            _ => false,
+        };
+        if !one_flate
+            || s.dict.contains(b"DecodeParms")
+            || s.dict.contains(b"F")
+            || matches!(s.dict.name(b"Type"), Some(b"XRef" | b"ObjStm" | b"Metadata"))
+            || s.raw.len() < 64
+        {
+            continue;
+        }
+        if !progress(Stage::CleanUp) {
+            return Err(OptimizeError::Cancelled);
+        }
+        let Ok(data) = s.decoded_strict_within(s.raw.len().saturating_mul(MAX_FLATE_RATIO)) else { continue };
+        let mut dict = s.dict.clone();
+        dict.remove(b"Length");
+        let again = Stream::flate(dict, &data);
+        if again.raw.len() < s.raw.len() {
+            doc.set(r, Object::Stream(again));
+            n += 1;
         }
     }
     Ok(n)

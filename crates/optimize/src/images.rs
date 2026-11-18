@@ -873,9 +873,11 @@ fn is_stencil(doc: &Document, mask: &Object) -> bool {
 /// One image: resample and/or recompress per `settings`; `ppi` is its effective resolution.
 /// Returns the new image and its new soft mask, if the result is smaller.
 ///
-/// PDFPack: an image that cannot be resampled (its soft mask has a matte, a `/Decode` or is not
-/// eight-bit, so it cannot follow the image to a new size) is still recompressed at its own size,
-/// instead of being left as it was.
+/// PDFPack: an image that cannot be resampled because of its soft mask (one with a matte, a
+/// `/Decode` or not eight-bit, which cannot follow the image to a new size) is still recompressed
+/// at its own size, instead of being left as it was. Only then ([`mask_stays_its_size`]): an
+/// image left for any other reason (a mask that can't be read, the run's allowance spent) is not
+/// read a second time.
 ///
 /// `n` is the components of the samples processed: 1 (grey), 3 (RGB) or 4 (CMYK, resampled and
 /// stored with Flate, never JPEG). With a `palette` the picture is indexed, and is expanded to
@@ -888,10 +890,25 @@ fn process(
     (n, palette): (usize, Option<&Palette>),
     budget: &mut ImageBudget,
 ) -> Option<(Stream, Option<(ObjRef, Stream)>)> {
+    let refused = budget.refused();
     process_as_set(doc, s, ppi, settings, (n, palette), budget).or_else(|| {
         let same_size = ImageSettings { downsample: false, ..*settings };
-        settings.downsample.then(|| process_as_set(doc, s, ppi, &same_size, (n, palette), budget)).flatten()
+        (settings.downsample && budget.refused() == refused && mask_stays_its_size(doc, s))
+            .then(|| process_as_set(doc, s, ppi, &same_size, (n, palette), budget))
+            .flatten()
     })
+}
+
+/// Whether image `s` has a soft mask that is a well-formed image (a size within [`MAX_PIXELS`])
+/// but that resampling can't take along ([`process_as_set`]): it has a `/Matte` or a `/Decode`,
+/// or isn't eight-bit.
+fn mask_stays_its_size(doc: &Document, s: &Stream) -> bool {
+    let Some(mr) = s.dict.reference(b"SMask") else { return false };
+    let mobj = doc.get(mr);
+    let Object::Stream(m) = &*mobj else { return false };
+    let side = |k: &[u8]| m.dict.int(k).and_then(|v| u32::try_from(v).ok()).filter(|v| *v > 0);
+    let sized = side(b"Width").zip(side(b"Height")).is_some_and(|(w, h)| u64::from(w) * u64::from(h) <= MAX_PIXELS);
+    sized && (m.dict.int(b"BitsPerComponent") != Some(8) || m.dict.contains(b"Matte") || m.dict.contains(b"Decode"))
 }
 
 fn process_as_set(
