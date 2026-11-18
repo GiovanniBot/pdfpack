@@ -23,7 +23,9 @@ use state::{Doc, Msg, Prefs, Progress, Snapshot, Sort};
 
 fn main() -> eframe::Result {
     if std::env::args().nth(1).as_deref() == Some("--version") {
-        println!("{}", update::VERSION);
+        // `println!` entraria em pânico se quem chamou já fechou a saída.
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("{}
+", update::VERSION).as_bytes());
         return Ok(());
     }
     update::clean_up();
