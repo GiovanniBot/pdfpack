@@ -9,6 +9,7 @@ mod icons;
 mod install;
 mod list;
 mod modals;
+mod pick;
 mod render;
 mod state;
 mod theme;
@@ -181,7 +182,14 @@ pub struct App {
     pub scroll_to: Option<usize>,
     /// Quando a lista foi organizada em emails, para a animação de entrada.
     pub organized_at: Option<f64>,
-    pub drag: Option<u64>,
+    /// As linhas selecionadas na lista. `selected` é a que o visualizador mostra.
+    pub picked: HashSet<u64>,
+    /// De onde um Shift+clique estende a seleção.
+    pub anchor: Option<u64>,
+    pub drag: Option<list::Drag>,
+    pub marquee: Option<list::Marquee>,
+    /// As animações da lista durante um arrasto (linhas que somem, espaço que abre).
+    pub list_anim: HashMap<(u8, u64), f32>,
     pub limit_text: f64,
     /// Uma versão nova já encontrada, à espera de um momento sem diálogo aberto.
     pending_update: Option<update::Release>,
@@ -217,7 +225,11 @@ impl App {
             current_page: 0,
             scroll_to: None,
             organized_at: None,
+            picked: HashSet::new(),
+            anchor: None,
             drag: None,
+            marquee: None,
+            list_anim: HashMap::new(),
             limit_text: prefs.email_limit_mb,
             pending_update: None,
             silent_update: false,
@@ -288,9 +300,72 @@ impl App {
 
     /// Mantém um PDF selecionado enquanto houver algum.
     pub fn fix_selection(&mut self) {
+        let ids: HashSet<u64> = self.state.docs.iter().map(|d| d.id).collect();
+        self.picked.retain(|id| ids.contains(id));
+        self.anchor = self.anchor.filter(|id| ids.contains(id));
         if self.selected_doc().is_none() {
-            self.select(self.state.docs.first().map(|d| d.id));
+            // O PDF aberto saiu da lista: abre outro da seleção, ou o primeiro da lista.
+            let next = self.state.docs.iter().find(|d| self.picked.contains(&d.id)).or(self.state.docs.first()).map(|d| d.id);
+            self.select(next);
+            if self.picked.is_empty() {
+                self.picked = next.into_iter().collect();
+                self.anchor = next;
+            }
         }
+    }
+
+    /// Um clique numa linha da lista, com as teclas que estavam apertadas.
+    pub fn pick(&mut self, id: u64, ctrl: bool, shift: bool) {
+        let order: Vec<u64> = self.state.docs.iter().map(|d| d.id).collect();
+        let (picked, anchor) = pick::click(&order, &self.picked, self.anchor, id, ctrl, shift);
+        self.picked = picked;
+        self.anchor = anchor;
+        if self.picked.contains(&id) {
+            self.select(Some(id));
+        } else {
+            self.show_picked();
+        }
+    }
+
+    /// A seleção volta a ser só o PDF aberto no visualizador.
+    pub fn pick_shown(&mut self) {
+        self.picked = self.selected.into_iter().collect();
+        self.anchor = self.selected;
+    }
+
+    /// Se o PDF aberto ficou fora da seleção, abre o primeiro dela.
+    pub fn show_picked(&mut self) {
+        if self.selected.is_some_and(|id| self.picked.contains(&id)) {
+            return;
+        }
+        if let Some(first) = self.state.docs.iter().find(|d| self.picked.contains(&d.id)).map(|d| d.id) {
+            self.select(Some(first));
+            self.anchor = Some(first);
+        }
+    }
+
+    pub fn pick_all(&mut self) {
+        self.picked = self.state.docs.iter().map(|d| d.id).collect();
+    }
+
+    /// Tira da lista tudo o que está selecionado, em um passo só do desfazer.
+    pub fn remove_picked(&mut self) {
+        if !self.state.docs.iter().any(|d| self.picked.contains(&d.id)) {
+            return;
+        }
+        self.checkpoint();
+        let picked = std::mem::take(&mut self.picked);
+        self.state.docs.retain(|d| !picked.contains(&d.id));
+        self.fix_selection();
+    }
+
+    /// Larga um arrasto ou um retângulo de seleção pela metade, sem mover nada.
+    pub fn cancel_gesture(&mut self) -> bool {
+        let any = self.drag.is_some() || self.marquee.is_some();
+        self.drag = None;
+        self.marquee = None;
+        self.list_anim.clear();
+        any
     }
 
     pub fn select(&mut self, id: Option<u64>) {
@@ -423,16 +498,16 @@ impl App {
         self.state.sort_docs();
     }
 
-    /// Move o PDF `id` para antes da posição `to` da lista.
-    pub fn move_doc(&mut self, id: u64, to: usize) {
-        let Some(from) = self.state.docs.iter().position(|d| d.id == id) else { return };
-        let to = if to > from { to - 1 } else { to };
-        if to == from {
+    /// Move os PDFs `ids`, juntos e na ordem em que estão, para antes da posição `to` da lista.
+    pub fn move_docs(&mut self, ids: &HashSet<u64>, to: usize) {
+        let order: Vec<u64> = self.state.docs.iter().map(|d| d.id).collect();
+        let moved = pick::moved(&order, ids, to);
+        if moved == order {
             return;
         }
         self.checkpoint();
-        let doc = self.state.docs.remove(from);
-        self.state.docs.insert(to.min(self.state.docs.len()), doc);
+        let mut docs: HashMap<u64, Doc> = std::mem::take(&mut self.state.docs).into_iter().map(|d| (d.id, d)).collect();
+        self.state.docs = moved.iter().filter_map(|id| docs.remove(id)).collect();
         self.state.sort = Sort::Manual;
     }
 
@@ -626,10 +701,15 @@ impl App {
                 viewer::set_zoom(self, self.zoom / viewer::ZOOM_STEP, None);
             }
         }
-        if pressed(Modifiers::NONE, Key::Delete)
-            && let Some(id) = self.selected
-        {
-            self.remove(id);
+        if pressed(Modifiers::NONE, Key::Delete) {
+            self.remove_picked();
+        }
+        if pressed(Modifiers::COMMAND, Key::A) {
+            self.pick_all();
+        }
+        // Esc larga um arrasto pela metade; sem arrasto, desfaz a seleção múltipla.
+        if ctx.input(|i| i.key_pressed(Key::Escape)) && !self.cancel_gesture() && self.picked.len() > 1 {
+            self.pick_shown();
         }
     }
 

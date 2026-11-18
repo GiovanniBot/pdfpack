@@ -1,6 +1,8 @@
 //! A barra de ações e a listagem dos PDFs (com os cartões "Email N" quando organizada).
 
-use egui::{Align, Align2, Color32, CornerRadius, Layout, Pos2, Rect, RichText, Sense, Shape, Stroke, StrokeKind, Ui, pos2, vec2};
+use std::collections::{HashMap, HashSet};
+
+use egui::{Align, Align2, Color32, CornerRadius, Layout, Pos2, Rect, RichText, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 
 use crate::core::human_size;
 use crate::icons::Icon;
@@ -171,11 +173,16 @@ pub fn empty(app: &mut App, ui: &mut Ui) {
 }
 
 enum Action {
-    Select(u64),
+    /// Um clique numa linha, com Ctrl e com Shift.
+    Pick(u64, bool, bool),
+    /// Um clique no fundo: a seleção volta a ser só o PDF aberto.
+    PickShown,
+    /// O retângulo de seleção terminou: o visualizador acompanha.
+    ShowPicked,
     Check(u64),
     CheckAll(bool),
     Remove(u64),
-    Move(u64, usize),
+    Move(HashSet<u64>, usize),
     Fold(usize),
     Sort(Sort),
     Add,
@@ -297,6 +304,122 @@ fn summary(app: &App, ui: &mut Ui) {
     }
 }
 
+/// Um arrasto em andamento: as linhas que vão junto e o cartão que segue o ponteiro.
+pub struct Drag {
+    pub ids: HashSet<u64>,
+    /// A linha que foi agarrada: é ela que o cartão mostra.
+    lead: u64,
+    /// Onde o cartão foi agarrado, a partir do canto de cima à esquerda.
+    grab: Vec2,
+    size: Vec2,
+    /// O canto do cartão na tela.
+    pos: Pos2,
+    /// Antes de qual posição da lista as linhas caem se forem soltas agora.
+    to: usize,
+    /// A inclinação, em radianos, e o quanto o cartão está erguido (0 a 1).
+    tilt: f32,
+    lift: f32,
+    /// Solto: quando, e de onde o cartão voa até o lugar em que pousa.
+    landing: Option<(f64, Pos2)>,
+}
+
+/// Um retângulo de seleção em andamento.
+pub struct Marquee {
+    /// Onde começou, medido a partir do topo do conteúdo da lista (acompanha a rolagem).
+    start: Vec2,
+    /// O que já estava selecionado, quando o retângulo soma (Ctrl ou Shift).
+    base: HashSet<u64>,
+}
+
+const PRESENT: u8 = 0;
+const GAP: u8 = 1;
+const LIFT: u8 = 2;
+
+/// Leva o valor guardado em `key` na direção de `target`, um pouco a cada quadro.
+fn approach(map: &mut HashMap<(u8, u64), f32>, key: (u8, u64), start: f32, target: f32, dt: f32, moving: &mut bool) -> f32 {
+    let v = map.entry(key).or_insert(start);
+    let next = *v + (target - *v) * (1.0 - (-20.0 * dt).exp());
+    *v = if (target - next).abs() < 0.004 { target } else { next };
+    *moving |= *v != target;
+    *v
+}
+
+/// O espaço que a lista abre onde as linhas arrastadas vão cair. Devolve o lugar da linha nele.
+fn gap(ui: &mut Ui, size: f32, width: f32, inset: f32) -> Option<Rect> {
+    let height = (ROW + 5.0) * size;
+    if height < 0.5 {
+        return None;
+    }
+    let (slot, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    let place = Rect::from_min_size(slot.min + vec2(inset, 0.0), vec2(width - 2.0 * inset, ROW));
+    let shown = Rect::from_min_max(place.min, pos2(place.max.x, slot.max.y - 5.0 * size));
+    if shown.height() > 6.0 {
+        let p = ui.painter().with_clip_rect(slot);
+        p.rect_filled(shown, 10, ACCENT.gamma_multiply(0.07 * size));
+        p.extend(Shape::dashed_line(&rounded_outline(shown.shrink(0.5), 10.0), Stroke::new(1.3, ACCENT.gamma_multiply(0.75 * size)), 6.0, 5.0));
+    }
+    Some(place)
+}
+
+/// O cartão que segue o ponteiro durante o arrasto: inclinado em torno do ponto em que foi
+/// agarrado, com sombra, e empilhado quando leva mais de um PDF.
+fn floating_card(ui: &Ui, painter: &egui::Painter, drag: &Drag, doc: &crate::state::Doc) {
+    let lift = drag.lift;
+    let rect = Rect::from_min_size(drag.pos, drag.size).expand(1.5 * lift);
+    let pivot = drag.pos + drag.grab;
+    let turned = |points: Vec<Pos2>, angle: f32, shift: Vec2| -> Vec<Pos2> {
+        let rot = egui::emath::Rot2::from_angle(angle);
+        points.into_iter().map(|p| pivot + rot * (p - pivot) + shift).collect()
+    };
+    let outline = |r: Rect, radius: f32| {
+        let mut points = rounded_outline(r, radius);
+        points.pop();
+        points
+    };
+    // A sombra: camadas largas e fracas por baixo, mais forte quanto mais erguido.
+    for k in 0..5 {
+        let grow = k as f32 * 2.6 * lift;
+        let shadow = turned(outline(rect.expand(grow), 10.0 + grow), drag.tilt, vec2(0.0, 5.0 + 7.0 * lift));
+        painter.add(Shape::convex_polygon(shadow, Color32::from_black_alpha((34.0 * lift) as u8), Stroke::NONE));
+    }
+    // Os outros PDFs do grupo, espiando por trás.
+    let behind = drag.ids.len().saturating_sub(1).min(2);
+    for k in (1..=behind).rev() {
+        let k = k as f32;
+        let points = turned(outline(rect, 10.0), drag.tilt + 0.035 * k * lift, vec2(3.0 * k, 5.0 * k) * lift);
+        painter.add(Shape::convex_polygon(points.clone(), theme::mix(CARD, BG, 0.25 * k), Stroke::NONE));
+        painter.add(Shape::closed_line(points, Stroke::new(1.0, BORDER.gamma_multiply(1.6))));
+    }
+    let points = turned(outline(rect, 10.0), drag.tilt, egui::Vec2::ZERO);
+    painter.add(Shape::convex_polygon(points.clone(), CARD_HOVER, Stroke::NONE));
+    painter.add(Shape::closed_line(points, Stroke::new(1.4, ACCENT)));
+
+    let at = |p: Pos2| turned(vec![p], drag.tilt, egui::Vec2::ZERO)[0];
+    let check = Rect::from_center_size(pos2(rect.min.x + 20.0, rect.center().y), vec2(17.0, 17.0));
+    let square = turned(outline(check, 5.0), drag.tilt, egui::Vec2::ZERO);
+    if doc.checked {
+        painter.add(Shape::convex_polygon(square, ACCENT, Stroke::NONE));
+        let c = check.center();
+        let tick = vec![at(c + vec2(-4.0, 0.2)), at(c + vec2(-1.2, 3.0)), at(c + vec2(4.2, -3.2))];
+        painter.add(Shape::line(tick, Stroke::new(1.8, ON_ACCENT)));
+    } else {
+        painter.add(Shape::closed_line(square, Stroke::new(1.4, MUTED)));
+    }
+    let width = rect.width() - 40.0 - 26.0;
+    let name = elided_name(ui, &doc.name, theme::regular(13.5), TEXT, width);
+    painter.add(egui::epaint::TextShape::new(at(pos2(rect.min.x + 40.0, rect.min.y + 9.0)), name, TEXT).with_angle(drag.tilt));
+    let detail = format!("{} · {}", human_size(doc.size()), plural(doc.pages.len(), "página", "páginas"));
+    let detail = elided(ui, &detail, theme::regular(11.5), MUTED, width);
+    painter.add(egui::epaint::TextShape::new(at(pos2(rect.min.x + 40.0, rect.min.y + 28.0)), detail, MUTED).with_angle(drag.tilt));
+    // Quantos PDFs vão junto.
+    if drag.ids.len() > 1 {
+        let c = at(rect.right_top() + vec2(-8.0, 4.0));
+        painter.circle_filled(c, 12.5, ACCENT);
+        painter.circle_stroke(c, 12.5, Stroke::new(2.0, BG));
+        painter.text(c, Align2::CENTER_CENTER, drag.ids.len().to_string(), theme::semibold(12.0), ON_ACCENT);
+    }
+}
+
 pub fn panel(app: &mut App, ui: &mut Ui) {
     let mut actions: Vec<Action> = Vec::new();
     header(app, ui, &mut actions);
@@ -308,7 +431,7 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
         .show(ui, |ui| summary(app, ui));
 
     let n = app.state.docs.len();
-    let now = ui.input(|i| i.time);
+    let (now, dt) = ui.input(|i| (i.time, i.stable_dt.min(0.05)));
     let limit = app.state.organized;
     let emails = app.state.emails();
     let groups: Vec<(Option<usize>, Vec<usize>)> = match &emails {
@@ -323,15 +446,25 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
         1.0 - (1.0 - t).powi(3)
     };
     let mut animating = false;
-    // Onde cada linha ficou neste quadro, para saber onde soltar um PDF arrastado.
+    // Onde cada linha ficou neste quadro: é onde se solta um PDF e o que o retângulo de seleção toca.
     let mut rows: Vec<(usize, Rect)> = Vec::new();
+    // Durante um arrasto as linhas levadas somem da lista e ela abre espaço onde vão cair.
+    let carried: HashSet<u64> = app.drag.as_ref().map(|d| d.ids.clone()).unwrap_or_default();
+    let drop_at = app.drag.as_ref().map(|d| d.to);
+    let live = app.drag.is_some();
+    let mut landing: Option<Rect> = None;
+    let mut finished = false;
 
     egui::ScrollArea::vertical().id_salt("docs").auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let width = ui.available_width();
         let left = ui.cursor().min.x;
+        let origin = ui.cursor().min;
+        let view = ui.clip_rect();
+        // O fundo da lista, por baixo das linhas: arrastar a partir dele desenha o retângulo de seleção.
+        let background = ui.interact(view, ui.scope_id().with("background"), Sense::click_and_drag());
         let mut order = 0;
-        for (email, docs) in &groups {
+        for (g, (email, docs)) in groups.iter().enumerate() {
             let mut open = 1.0;
             let mut appear = 1.0;
             let card = ui.painter().add(Shape::Noop);
@@ -393,41 +526,65 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 }
             }
             let inset = if grouped { INSET } else { 0.0 };
+            // O espaço antes da posição `at`, que só existe durante um arrasto.
+            let mut space = |ui: &mut Ui, app: &mut App, at: usize, animating: &mut bool| {
+                if !live {
+                    return;
+                }
+                let size = approach(&mut app.list_anim, (GAP, at as u64), 0.0, if drop_at == Some(at) { 1.0 } else { 0.0 }, dt, animating);
+                let place = gap(ui, size * open, width, inset);
+                if drop_at == Some(at) {
+                    landing = place;
+                }
+            };
             for &i in docs {
                 if open <= 0.01 {
                     break;
                 }
+                space(ui, app, i, &mut animating);
                 let doc = &app.state.docs[i];
                 let t = if grouped { enter(order) } else { 1.0 };
                 if grouped {
                     order += 1;
                     animating |= t < 1.0;
                 }
-                let step = (ROW + 5.0) * open;
+                // Uma linha levada pelo arrasto encolhe até sumir; solta, a lista volta ao normal de uma vez.
+                let present = if live {
+                    approach(&mut app.list_anim, (PRESENT, doc.id), 1.0, if carried.contains(&doc.id) { 0.0 } else { 1.0 }, dt, &mut animating)
+                } else {
+                    1.0
+                };
+                let step = (ROW + 5.0) * open * present;
                 let (slot, _) = ui.allocate_exact_size(vec2(width, step), Sense::hover());
                 // Na entrada, a linha desliza para dentro do cartão.
                 let rect = Rect::from_min_size(slot.min + vec2(inset - (1.0 - t) * 18.0, 0.0), vec2(width - 2.0 * inset, ROW));
-                rows.push((i, rect));
-                if !ui.is_rect_visible(slot) {
+                if !carried.contains(&doc.id) {
+                    rows.push((i, rect));
+                }
+                if !ui.is_rect_visible(slot) || present < 0.05 {
                     continue;
                 }
-                let whole = open > 0.99 && t > 0.99;
+                let whole = open > 0.99 && t > 0.99 && present > 0.99;
                 let clip = slot.expand2(vec2(0.0, 0.5));
                 let resp = ui.interact(rect.intersect(slot), ui.scope_id().with(("row", doc.id)), Sense::click_and_drag());
-                let selected = app.selected == Some(doc.id);
-                let dragging = app.drag == Some(doc.id);
-                let alpha = if dragging { 0.3 } else { t };
+                let picked = app.picked.contains(&doc.id);
+                // O PDF aberto no visualizador, quando faz parte da seleção.
+                let shown = picked && app.selected == Some(doc.id);
+                let alpha = t * present;
                 let fade = |c: Color32| c.gamma_multiply(alpha);
-                let hover = ui.ctx().animate_bool_with_time(resp.id.with("hover"), resp.hovered() || selected, 0.08);
+                let hover = ui.ctx().animate_bool_with_time(resp.id.with("hover"), resp.hovered() || picked, 0.08);
                 let p = ui.painter().with_clip_rect(clip);
                 p.rect_filled(rect, 10, fade(theme::mix(if grouped { CARD } else { CARD.gamma_multiply(0.75) }, CARD_HOVER, hover)));
+                if picked && !shown {
+                    p.rect_filled(rect, 10, fade(ACCENT).gamma_multiply(0.05));
+                }
                 // Comprimidos ficam com a borda amarela, mais forte no selecionado.
                 if doc.compressed {
-                    p.rect_stroke(rect, 10, Stroke::new(1.2, fade(ACCENT).gamma_multiply(if selected { 1.0 } else { 0.55 })), StrokeKind::Inside);
-                } else if selected {
+                    p.rect_stroke(rect, 10, Stroke::new(1.2, fade(ACCENT).gamma_multiply(if picked { 1.0 } else { 0.55 })), StrokeKind::Inside);
+                } else if picked {
                     p.rect_stroke(rect, 10, Stroke::new(1.0, fade(MUTED).gamma_multiply(0.7)), StrokeKind::Inside);
                 }
-                if selected {
+                if shown {
                     p.rect_filled(
                         Rect::from_min_max(pos2(rect.min.x, rect.min.y + 13.0), pos2(rect.min.x + 3.0, rect.max.y - 13.0)),
                         CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
@@ -445,7 +602,7 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 }
 
                 // À direita: a economia; com o ponteiro em cima, o botão de remover no lugar dela.
-                let hovered = whole && ui.rect_contains_pointer(rect) && app.drag.is_none();
+                let hovered = whole && ui.rect_contains_pointer(rect) && !live && app.marquee.is_none();
                 let mut right = rect.max.x - 34.0;
                 if doc.compressed && !hovered {
                     let badge = theme::pill(
@@ -472,7 +629,7 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 }
 
                 let text_left = rect.min.x + 40.0;
-                if open > 0.6 {
+                if open * present > 0.6 {
                     let name = elided_name(ui, &doc.name, theme::regular(13.5), fade(TEXT), right - text_left);
                     p.galley(pos2(text_left, rect.min.y + 8.0), name, TEXT);
                     let detail = match &doc.error {
@@ -484,11 +641,23 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 }
 
                 if resp.clicked() {
-                    actions.push(Action::Select(doc.id));
+                    let keys = ui.input(|i| i.modifiers);
+                    actions.push(Action::Pick(doc.id, keys.command, keys.shift));
                 }
-                if resp.drag_started() {
-                    app.drag = Some(doc.id);
+                if resp.drag_started() && whole && app.drag.is_none() {
+                    // Arrastar uma linha da seleção leva a seleção inteira; outra linha vai sozinha.
+                    let ids = if picked { app.picked.clone() } else { HashSet::from([doc.id]) };
+                    if !picked {
+                        actions.push(Action::Pick(doc.id, false, false));
+                    }
+                    let press = ui.input(|i| i.pointer.press_origin()).unwrap_or(rect.center());
+                    let grab = (press - rect.min).clamp(egui::Vec2::ZERO, rect.size());
+                    app.drag = Some(Drag { ids, lead: doc.id, grab, size: rect.size(), pos: rect.min, to: i, tilt: 0.0, lift: 0.0, landing: None });
                 }
+            }
+            // Depois da última linha da lista também se solta.
+            if g + 1 == groups.len() && open > 0.01 {
+                space(ui, app, n, &mut animating);
             }
             if grouped {
                 // O cartão do email, pintado por trás do que acabou de ser desenhado.
@@ -510,40 +679,99 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
         // Um respiro no fim, que também é onde se solta para mover ao final da lista.
         ui.allocate_exact_size(vec2(width, 20.0), Sense::hover());
 
-        if let Some(id) = app.drag {
-            let pointer = ui.ctx().pointer_latest_pos();
-            let released = ui.input(|i| i.pointer.any_released() || !i.pointer.any_down());
-            if let (Some(pos), Some(first)) = (pointer, rows.first().copied()) {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                // Antes da primeira linha cujo meio está abaixo do ponteiro; senão, no fim.
-                let target = rows.iter().find(|(_, r)| pos.y < r.center().y).copied();
-                let (to, y, x) = match target {
-                    Some((i, r)) => (i, r.min.y - 3.0, r.min.x),
-                    None => {
-                        let (i, r) = rows.last().copied().unwrap_or(first);
-                        (i + 1, r.max.y + 2.5, r.min.x)
+        let pointer = ui.ctx().pointer_latest_pos();
+        let held = ui.input(|i| i.pointer.primary_down());
+        // Perto da borda de cima ou de baixo, a lista rola sozinha para o arrasto alcançar o resto.
+        let edge_scroll = |ui: &Ui, pos: Pos2| {
+            let reach = 36.0;
+            let pull = ((view.min.y + reach - pos.y) / reach).clamp(0.0, 1.5) - ((pos.y - (view.max.y - reach)) / reach).clamp(0.0, 1.5);
+            if pull != 0.0 {
+                ui.scroll_with_delta(vec2(0.0, pull * 900.0 * dt));
+            }
+        };
+        let above = egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("above"));
+
+        // O retângulo de seleção, a partir do fundo da lista.
+        if background.drag_started()
+            && app.drag.is_none()
+            && let Some(press) = ui.input(|i| i.pointer.press_origin())
+        {
+            let keys = ui.input(|i| i.modifiers);
+            let base = if keys.command || keys.shift { app.picked.clone() } else { HashSet::new() };
+            app.marquee = Some(Marquee { start: press - origin, base });
+        } else if background.clicked() {
+            actions.push(Action::PickShown);
+        }
+        if let Some(marquee) = &app.marquee {
+            if let Some(pos) = pointer {
+                let area = Rect::from_two_pos(origin + marquee.start, pos);
+                let mut picked = marquee.base.clone();
+                picked.extend(rows.iter().filter(|(_, r)| r.intersects(area)).filter_map(|(i, _)| app.state.docs.get(*i).map(|d| d.id)));
+                app.picked = picked;
+                let shown = area.intersect(view);
+                let painter = ui.ctx().layer_painter(above);
+                painter.rect(shown, 4, ACCENT.gamma_multiply(0.10), Stroke::new(1.0, ACCENT.gamma_multiply(0.8)), StrokeKind::Inside);
+                if held {
+                    edge_scroll(ui, pos);
+                }
+            }
+            if !held {
+                app.marquee = None;
+                actions.push(Action::ShowPicked);
+            }
+            ui.ctx().request_repaint();
+        }
+
+        if let Some(drag) = &mut app.drag {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            let mut motion = false;
+            match drag.landing {
+                None => {
+                    if let Some(pos) = pointer {
+                        drag.pos = pos - drag.grab;
+                        edge_scroll(ui, pos);
                     }
-                };
-                let layer = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("drop")));
-                layer.hline(x + 4.0..=first.1.max.x - 4.0, y, Stroke::new(2.0, ACCENT));
-                layer.circle_filled(pos2(x + 4.0, y), 3.5, ACCENT);
-                if let Some(doc) = app.state.docs.iter().find(|d| d.id == id) {
-                    let ghost = Rect::from_min_size(pos + vec2(14.0, 6.0), vec2(240.0, 34.0));
-                    layer.rect_filled(ghost.translate(vec2(0.0, 3.0)), 10, Color32::from_black_alpha(90));
-                    layer.rect(ghost, 10, CARD_HOVER, Stroke::new(1.2, ACCENT), StrokeKind::Inside);
-                    let name = elided_name(ui, &doc.name, theme::regular(12.5), TEXT, ghost.width() - 24.0);
-                    layer.galley(ghost.min + vec2(12.0, 9.0), name, TEXT);
+                    // Cai antes da primeira linha cujo meio está abaixo do meio do cartão; senão, no fim.
+                    let middle = drag.pos.y + drag.size.y / 2.0;
+                    drag.to = rows.iter().find(|(_, r)| middle < r.center().y).map_or(n, |(i, _)| *i);
+                    // "Tortinho": sempre um pouco inclinado, e mais quando é puxado para os lados.
+                    let pull = ui.input(|i| i.pointer.velocity().x);
+                    let tilt = (-0.045 + pull * 0.00020).clamp(-0.15, 0.15);
+                    drag.tilt += (tilt - drag.tilt) * (1.0 - (-12.0 * dt).exp());
+                    drag.lift = approach(&mut app.list_anim, (LIFT, 0), 0.0, 1.0, dt, &mut motion);
+                    if !held {
+                        drag.landing = Some((now, drag.pos));
+                    }
                 }
-                if released {
-                    actions.push(Action::Move(id, to));
+                Some((since, from)) => {
+                    // Solto: o cartão endireita e voa até o espaço aberto na lista.
+                    let t = (((now - since) / 0.17) as f32).clamp(0.0, 1.0);
+                    let e = 1.0 - (1.0 - t).powi(3);
+                    let goal = landing.map_or(from, |r| r.min);
+                    drag.pos = from + (goal - from) * e;
+                    drag.tilt *= 1.0 - e;
+                    drag.lift = 1.0 - e;
+                    if t >= 1.0 {
+                        actions.push(Action::Move(drag.ids.clone(), drag.to));
+                        finished = true;
+                    }
                 }
             }
-            if released {
-                app.drag = None;
+            if let Some(doc) = app.state.docs.iter().find(|d| d.id == drag.lead) {
+                floating_card(ui, &ui.ctx().layer_painter(above), drag, doc);
+            } else {
+                // A linha agarrada saiu da lista no meio do arrasto: não há o que mover.
+                finished = true;
             }
+            ui.ctx().request_repaint();
         }
     });
 
+    if finished {
+        // A lista volta ao normal de uma vez: a linha aparece onde o cartão pousou.
+        app.drag = None;
+        app.list_anim.clear();
+    }
     if animating {
         ui.ctx().request_repaint();
     } else if app.organized_at.is_some_and(|start| now - start > 0.6) {
@@ -553,15 +781,20 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     for action in actions {
         match action {
-            Action::Select(id) => app.select(Some(id)),
+            Action::Pick(id, ctrl, shift) => app.pick(id, ctrl, shift),
+            Action::PickShown => app.pick_shown(),
+            Action::ShowPicked => app.show_picked(),
             Action::Check(id) => {
-                if let Some(doc) = app.state.docs.iter_mut().find(|d| d.id == id) {
-                    doc.checked = !doc.checked;
+                // Marcar uma linha da seleção marca (ou desmarca) a seleção inteira.
+                let Some(on) = app.state.docs.iter().find(|d| d.id == id).map(|d| !d.checked) else { continue };
+                let group = app.picked.contains(&id) && app.picked.len() > 1;
+                for doc in app.state.docs.iter_mut().filter(|d| d.id == id || (group && app.picked.contains(&d.id))) {
+                    doc.checked = on;
                 }
             }
             Action::CheckAll(on) => app.state.docs.iter_mut().for_each(|d| d.checked = on),
             Action::Remove(id) => app.remove(id),
-            Action::Move(id, to) => app.move_doc(id, to),
+            Action::Move(ids, to) => app.move_docs(&ids, to),
             Action::Fold(e) => {
                 if !app.collapsed.remove(&e) {
                     app.collapsed.insert(e);

@@ -77,6 +77,9 @@ eles já entram nessa ordem. No meio você vê o PDF selecionado; à direita, as
 Você pode:
 
 - **arrastar** um PDF na lista para mudar a ordem;
+- **selecionar vários** de uma vez: **Ctrl+clique** soma ou tira um, **Shift+clique** pega todos
+  até ele, e clicar no vazio da lista e arrastar desenha um retângulo de seleção. Os selecionados
+  são arrastados juntos, e **Delete** tira todos da lista;
 - usar o botão de setas (⇅) para ordenar por numeração, nome, tamanho ou data;
 - **desmarcar** os PDFs que não quer comprimir;
 - clicar em uma página à direita para ir direto a ela.
@@ -169,7 +172,9 @@ mantêm a ordem das páginas.
 | Ctrl+S | Salvar |
 | Ctrl+Z | Desfazer |
 | Ctrl+Shift+Z ou Ctrl+Y | Refazer |
-| Delete | Tirar da lista o PDF selecionado |
+| Delete | Tirar da lista os PDFs selecionados |
+| Ctrl+A | Selecionar todos os PDFs da lista |
+| Esc | Largar um arrasto pela metade, ou voltar a seleção para um PDF só |
 | Ctrl++ (ou Ctrl+=) | Ampliar o PDF |
 | Ctrl+- | Reduzir o PDF |
 | Ctrl+0 | Voltar o PDF a 100% |
