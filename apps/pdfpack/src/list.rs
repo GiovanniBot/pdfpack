@@ -40,7 +40,7 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
             app.modal = Modal::OrganizeSetup;
         }
         if theme::button(ui, Some(Icon::Save), "Salvar", kind(compressed || organized), has_docs)
-            .on_hover_text("Salva tudo em uma pasta (Ctrl+S)")
+            .on_hover_text(format!("Salva tudo em uma pasta ({})", theme::shortcut("S")))
             .clicked()
         {
             app.start_save(&ctx);
@@ -92,10 +92,14 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
                     ui.close();
                 }
             });
-            if theme::icon_button(ui, Icon::Redo, Kind::Ghost, app.can_redo()).on_hover_text("Refazer (Ctrl+Shift+Z)").clicked() {
+            if theme::icon_button(ui, Icon::Redo, Kind::Ghost, app.can_redo())
+                .on_hover_text(format!("Refazer ({})", theme::shortcut("Shift+Z")))
+                .clicked()
+            {
                 app.redo();
             }
-            if theme::icon_button(ui, Icon::Undo, Kind::Ghost, app.can_undo()).on_hover_text("Desfazer (Ctrl+Z)").clicked() {
+            if theme::icon_button(ui, Icon::Undo, Kind::Ghost, app.can_undo()).on_hover_text(format!("Desfazer ({})", theme::shortcut("Z"))).clicked()
+            {
                 app.undo();
             }
         });
@@ -237,7 +241,7 @@ fn header(app: &App, ui: &mut Ui, actions: &mut Vec<Action>) {
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            if theme::icon_button(ui, Icon::Plus, Kind::Ghost, true).on_hover_text("Adicionar PDFs (Ctrl+O)").clicked() {
+            if theme::icon_button(ui, Icon::Plus, Kind::Ghost, true).on_hover_text(format!("Adicionar PDFs ({})", theme::shortcut("O"))).clicked() {
                 actions.push(Action::Add);
             }
             let sort = theme::icon_button(ui, Icon::Sort, Kind::Ghost, true).on_hover_text(format!("Ordenar · {}", app.state.sort.name()));

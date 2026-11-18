@@ -201,3 +201,8 @@ fn drawn_icon() -> egui::IconData {
     }
     egui::IconData { rgba, width: N as u32, height: N as u32 }
 }
+
+/// Um atalho como aparece nas dicas: com Cmd no macOS e Ctrl nos outros sistemas.
+pub fn shortcut(keys: &str) -> String {
+    format!("{}+{keys}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" })
+}

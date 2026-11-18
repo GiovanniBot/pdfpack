@@ -20,5 +20,9 @@ serde_json = { workspace = true }
 ureq = "3"
 sha2 = "0.10"
 
+# No Linux a janela precisa de um dos dois sistemas gráficos; nos outros sistemas não há escolha.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+eframe = { workspace = true, features = ["x11", "wayland"] }
+
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

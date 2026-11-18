@@ -235,7 +235,7 @@ fn controls(app: &mut App, ui: &mut Ui, area: Rect) {
                         app.zoom = 1.0;
                     }
                     if theme::icon_button(ui, Icon::ZoomIn, theme::Kind::Ghost, app.zoom < 3.99)
-                        .on_hover_text("Ampliar (Ctrl + roda do mouse)")
+                        .on_hover_text(format!("Ampliar ({})", theme::shortcut("roda do mouse")))
                         .clicked()
                     {
                         app.zoom = (app.zoom * 1.2).min(4.0);

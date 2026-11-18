@@ -146,7 +146,8 @@ Não. Tudo acontece no seu computador. A única coisa que o PDFPack busca na int
 informação de que existe uma versão nova do próprio programa.
 
 **Funciona no macOS ou no Linux?**
-Por enquanto só no Windows 10 e 11. Veja [Compatibilidade](#compatibilidade), mais abaixo.
+Por enquanto só o Windows tem versão publicada. A do Linux já funciona e a do macOS está
+preparada; veja [Compatibilidade](#compatibilidade), mais abaixo.
 
 **Que tamanho máximo devo usar?**
 Use o limite do seu provedor de email: **25 MB** no Gmail e **20 MB** no Outlook.com. O que conta
@@ -355,17 +356,31 @@ desenvolvimento.
 
 ## Compatibilidade
 
-O PDFPack é publicado e testado só no **Windows 10 e 11 (64 bits)**.
+| Sistema | Situação |
+| --- | --- |
+| **Windows 10 e 11 (64 bits)** | Publicado e testado. É o `pdfpack.exe` das versões. |
+| **Linux (x86_64)** | Compila e foi testado no Ubuntu 24.04: janela, compressão, organização e preferências. Abrir e salvar pela janela de arquivos não foi testado. Ainda sem pacote publicado. |
+| **macOS 11 ou mais novo** | Empacotamento pronto (`scripts/package-macos.sh`), mas **ainda não compilado nem testado** em um Mac. |
 
-O motor de PDF e a interface (egui) são multiplataforma, então o código deve compilar no macOS e
-no Linux, mas isso **não foi compilado nem testado**, e três partes ainda são só do Windows:
+O que muda fora do Windows:
 
-- **Instalação e atualização automática.** Ficam desligadas fora do Windows: não há pergunta de
-  instalação, e "Procurar atualizações" não baixa nada.
-- **Preferências.** O arquivo fica em `%APPDATA%`; sem essa variável, o limite e o nível
-  escolhidos não são lembrados entre uma abertura e outra.
-- **Distribuição.** Só há `pdfpack.exe` nas versões publicadas. Um pacote para macOS pede um
-  `.app` assinado; no Linux, os diálogos de arquivo dependem do GTK ou do portal do desktop.
+- **Instalação e atualização automática** são só do Windows. No Linux, o pacote traz um
+  `instalar.sh` que copia o programa para `~/.local/bin` e cria a entrada no menu; no macOS,
+  arrasta-se o `PDFPack.app` para Aplicativos. Nos dois, a versão nova é baixada à mão.
+- **Preferências** ficam em `~/.config/pdfpack` no Linux e em
+  `~/Library/Application Support/PDFPack` no macOS.
+- **Atalhos** usam Cmd no macOS no lugar de Ctrl.
+- **Linux** precisa de X11 ou Wayland com OpenGL e do `xdg-desktop-portal` para as janelas de
+  abrir e salvar (GNOME e KDE já trazem os dois).
+- **macOS:** o aplicativo não tem a assinatura de desenvolvedor da Apple, então na primeira vez
+  é preciso abri-lo com o botão direito ▸ **Abrir** e confirmar.
+
+Para montar os pacotes, cada um no próprio sistema:
+
+```
+bash scripts/package-linux.sh    # dist/pdfpack-linux-x86_64.tar.gz
+bash scripts/package-macos.sh    # dist/PDFPack-macos.zip
+```
 
 ## Publicar uma versão
 

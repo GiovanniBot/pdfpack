@@ -1,0 +1,17 @@
+PDFPack para Linux (x86_64)
+
+Para usar sem instalar, rode o arquivo "pdfpack" desta pasta.
+
+Para instalar só para o seu usuário (sem senha de administrador), rode:
+
+    ./instalar.sh
+
+Isso copia o programa para ~/.local/bin e cria a entrada "PDFPack" no menu de
+aplicativos. Para remover: ./instalar.sh --remover
+
+O que o sistema precisa ter: um ambiente gráfico (X11 ou Wayland) com OpenGL, e
+o xdg-desktop-portal, que as janelas de abrir e salvar arquivo usam. As
+distribuições com GNOME ou KDE já vêm com os dois.
+
+No Linux o PDFPack não se atualiza sozinho: baixe a versão nova em
+https://github.com/GiovanniBot/pdfpack/releases/latest

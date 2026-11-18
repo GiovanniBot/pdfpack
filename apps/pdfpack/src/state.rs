@@ -384,8 +384,20 @@ impl Default for Prefs {
 }
 
 impl Prefs {
+    /// Onde cada sistema guarda a configuração dos aplicativos do usuário: `%APPDATA%\PDFPack` no
+    /// Windows, `~/Library/Application Support/PDFPack` no macOS e `$XDG_CONFIG_HOME/pdfpack`
+    /// (ou `~/.config/pdfpack`) no Linux e nos demais.
     fn file() -> Option<PathBuf> {
-        Some(PathBuf::from(std::env::var_os("APPDATA")?).join("PDFPack").join("preferencias.json"))
+        // Uma variável vazia conta como ausente, para não gravar em um caminho relativo.
+        let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+        let dir = if cfg!(windows) {
+            var("APPDATA")?.join("PDFPack")
+        } else if cfg!(target_os = "macos") {
+            var("HOME")?.join("Library").join("Application Support").join("PDFPack")
+        } else {
+            var("XDG_CONFIG_HOME").filter(|p| p.is_absolute()).or_else(|| var("HOME").map(|h| h.join(".config")))?.join("pdfpack")
+        };
+        Some(dir.join("preferencias.json"))
     }
 
     pub fn load() -> Self {

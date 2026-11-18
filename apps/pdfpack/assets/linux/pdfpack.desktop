@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PDFPack
+Comment=Comprime PDFs e organiza anexos por email
+Exec=pdfpack %F
+Icon=pdfpack
+Terminal=false
+Categories=Office;Utility;
+MimeType=application/pdf;
