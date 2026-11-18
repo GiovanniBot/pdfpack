@@ -7,8 +7,10 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 
 $version = (Select-String -Path apps/pdfpack/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
 $tag = "v$version"
+# Sempre o repositório do PDFPack, mesmo com outros remotos configurados.
+$repo = "GiovanniBot/pdfpack"
 if (git status --porcelain) { throw "Há mudanças sem commit: faça o commit antes de publicar." }
-gh release view $tag *> $null
+gh release view $tag --repo $repo *> $null
 if ($LASTEXITCODE -eq 0) { throw "A release $tag já existe: aumente a versão em apps/pdfpack/Cargo.toml." }
 
 cargo build --release -p pdfpack
@@ -19,6 +21,6 @@ if ($built -ne $version) { throw "O executável diz $built, mas a versão é $ve
 
 git push origin HEAD
 if (-not $Notes) { $Notes = "PDFPack $version" }
-gh release create $tag $exe --title "PDFPack $version" --notes $Notes --target (git rev-parse HEAD)
+gh release create $tag $exe --repo $repo --title "PDFPack $version" --notes $Notes --target (git rev-parse HEAD)
 if ($LASTEXITCODE -ne 0) { throw "Não foi possível criar a release." }
 Write-Host "Publicado: $tag"
