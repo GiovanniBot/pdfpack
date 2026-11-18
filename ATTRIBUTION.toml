@@ -54,7 +54,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "image"
 usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
-sha256 = "3aad07bc833b74415dcb4d47a1a520bae90bfad07a67f3ca85a6dad6abcf9c3c"
+sha256 = "5725aca9eef9e62d88315a0fb8ff9f28c30f0126c7138f4ce301fd8d10dcfffe"
 
 [[asset]]
 path = "apps/pdfpack/screenshots/limite.png"

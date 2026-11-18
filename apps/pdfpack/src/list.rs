@@ -25,18 +25,18 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         // Três ações independentes: quem só quer comprimir não precisa organizar. O amarelo cheio
-        // sugere a próxima, sem setas que façam parecer um caminho obrigatório.
-        if theme::button(ui, Some(if compressed { Icon::Done } else { Icon::Compress }), "Comprimir", kind(!compressed), has_docs).on_hover_text("Reduz o tamanho dos PDFs marcados").clicked() {
+        // vai de Comprimir para Salvar assim que há o que salvar; organizar fica sempre opcional.
+        if theme::button(ui, Some(if compressed { Icon::Done } else { Icon::Compress }), "Comprimir", kind(!compressed && !organized), has_docs).on_hover_text("Reduz o tamanho dos PDFs marcados").clicked() {
             app.modal = Modal::CompressSetup;
         }
-        if theme::button(ui, Some(if organized { Icon::Done } else { Icon::Mail }), "Organizar para email", kind(compressed && !organized), has_docs)
+        if theme::button(ui, Some(if organized { Icon::Done } else { Icon::Mail }), "Organizar para email", Kind::Outline, has_docs)
             .on_hover_text("Distribui os PDFs em pastas que cabem em um email")
             .clicked()
         {
             app.limit_text = app.prefs.email_limit_mb;
             app.modal = Modal::OrganizeSetup;
         }
-        if theme::button(ui, Some(Icon::Save), "Salvar", kind(organized), has_docs).on_hover_text("Salva tudo em uma pasta (Ctrl+S)").clicked() {
+        if theme::button(ui, Some(Icon::Save), "Salvar", kind(compressed || organized), has_docs).on_hover_text("Salva tudo em uma pasta (Ctrl+S)").clicked() {
             app.start_save(&ctx);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
