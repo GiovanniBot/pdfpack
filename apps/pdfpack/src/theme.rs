@@ -42,6 +42,10 @@ pub fn install(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 
     egui_extras::install_image_loaders(ctx);
+    // Ctrl + / Ctrl − / Ctrl 0 são o zoom do documento (`App::shortcuts`); o egui os usaria para
+    // a interface inteira. O fator volta a 1 para a interface nunca ficar presa ampliada.
+    ctx.options_mut(|o| o.zoom_with_keyboard = false);
+    ctx.set_zoom_factor(1.0);
     ctx.set_theme(egui::Theme::Dark);
     ctx.all_styles_mut(|style| {
         let v = &mut style.visuals;

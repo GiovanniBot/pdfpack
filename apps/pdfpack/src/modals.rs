@@ -334,6 +334,56 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     next = Next::Close;
                 }
             }
+            Modal::OrganizeDone { emails, pdfs, limit, changed } => {
+                let (before, after) = changed.iter().fold((0u64, 0u64), |(b, a), c| (b + c.before, a + c.after));
+                let saved = before.saturating_sub(after);
+                let subtitle = format!("{} em {} de até {}", plural(*pdfs, "PDF", "PDFs"), plural(*emails, "email", "emails"), human_size(*limit));
+                heading(ui, Icon::Done, ACCENT, "Organização concluída", &subtitle);
+                let (hero, _) = ui.allocate_exact_size(vec2(ui.available_width(), 84.0), Sense::hover());
+                ui.painter().rect_filled(hero, 14, ACCENT);
+                // Menos de 1% é só a diferença de regravar o arquivo: o destaque vai para os emails.
+                let (big, title, hint) = if before > 0 && saved.saturating_mul(100) >= before {
+                    (format!("−{:.0}%", 100.0 * saved as f64 / before as f64), format!("{} a menos", human_size(saved)), "sem recomprimir e sem tirar páginas")
+                } else {
+                    (emails.to_string(), if *emails == 1 { "email".to_owned() } else { "emails".to_owned() }, "cada pasta cabe em uma mensagem")
+                };
+                let number = ui.painter().text(pos2(hero.min.x + 22.0, hero.center().y), Align2::LEFT_CENTER, big, theme::semibold(40.0), ON_ACCENT);
+                ui.painter().text(pos2(number.max.x + 18.0, hero.center().y - 10.0), Align2::LEFT_CENTER, title, theme::semibold(16.0), ON_ACCENT);
+                ui.painter().text(pos2(number.max.x + 18.0, hero.center().y + 12.0), Align2::LEFT_CENTER, hint, theme::regular(12.5), ON_ACCENT.gamma_multiply(0.75));
+                ui.add_space(8.0);
+                comparison(ui, before, after);
+                ui.add_space(6.0);
+                ui.label(RichText::new("O que foi feito").font(theme::semibold(12.5)).color(MUTED));
+                egui::ScrollArea::vertical().max_height(132.0).show(ui, |ui| {
+                    for c in changed {
+                        let pages = plural(c.pages, "página", "páginas");
+                        let (icon, what) = if c.parts == 1 {
+                            (Icon::Check, format!("coube inteiro: {} → {}, com as {pages} de antes", human_size(c.before), human_size(c.after)))
+                        } else {
+                            (Icon::Scissors, format!("dividido em {} partes, que somam as {pages} de antes", c.parts))
+                        };
+                        ui.horizontal_top(|ui| {
+                            let (slot, _) = ui.allocate_exact_size(vec2(16.0, 18.0), Sense::hover());
+                            icon.paint(ui, slot.center(), 14.0, ACCENT);
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 1.0;
+                                let name = crate::list::elided_name(ui, &c.name, theme::semibold(13.0), TEXT, ui.available_width());
+                                ui.label(name);
+                                muted(ui, what);
+                                if c.over {
+                                    ui.label(RichText::new("Uma página sozinha passa do limite e ficou em um arquivo só dela.").color(DANGER).size(12.5));
+                                }
+                            });
+                        });
+                    }
+                });
+                if changed.iter().any(|c| c.parts == 1) {
+                    muted(ui, "O arquivo que coube inteiro foi regravado sem as imagens que nenhuma página mostrava. Nada visível mudou.");
+                }
+                if buttons(ui, Some((Icon::Check, "Continuar")), None).0 {
+                    next = Next::Close;
+                }
+            }
             Modal::Organizing(p) => {
                 progress(ui, Icon::Scissors, "Organizando…", p);
                 if buttons(ui, None, Some("Cancelar")).1 {
@@ -415,6 +465,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         Modal::CompressSetup
             | Modal::OrganizeSetup
             | Modal::CompressDone { .. }
+            | Modal::OrganizeDone { .. }
             | Modal::Message { .. }
             | Modal::UpdateOffer { .. }
             | Modal::UpdateDone { .. }
@@ -428,7 +479,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         next = match app.modal {
             Modal::CompressSetup if app.state.docs.iter().any(|d| d.checked) => Next::Compress,
             Modal::OrganizeSetup => Next::Organize,
-            Modal::CompressDone { .. } | Modal::Message { .. } => Next::Close,
+            Modal::CompressDone { .. } | Modal::OrganizeDone { .. } | Modal::Message { .. } => Next::Close,
             _ => Next::Stay,
         };
     }

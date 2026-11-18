@@ -271,7 +271,8 @@ fn split_one(doc: &Doc, limit: u64, tick: &mut dyn FnMut(f32) -> bool) -> Result
                 name: if n == 1 { doc.name.clone() } else { part_name(&doc.name, i, n) },
                 path: None,
                 modified: doc.modified,
-                base_size: (bytes.len() as f64 * ratio) as u64,
+                // Inteiro, o arquivo guarda o tamanho de origem: a lista mostra o que a regravação tirou.
+                base_size: if n == 1 { doc.base_size.max(bytes.len() as u64) } else { (bytes.len() as f64 * ratio) as u64 },
                 source: bytes.clone(),
                 current: bytes,
                 version: next_id(),

@@ -170,6 +170,10 @@ mantêm a ordem das páginas.
 | Ctrl+Z | Desfazer |
 | Ctrl+Shift+Z ou Ctrl+Y | Refazer |
 | Delete | Tirar da lista o PDF selecionado |
+| Ctrl++ (ou Ctrl+=) | Ampliar o PDF |
+| Ctrl+- | Reduzir o PDF |
+| Ctrl+0 | Voltar o PDF a 100% |
+| Ctrl+roda do mouse | Ampliar ou reduzir no ponto sob o mouse |
 
 ---
 

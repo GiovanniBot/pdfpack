@@ -90,6 +90,18 @@ fn uninstall_from_command_line(quiet: bool) -> i32 {
 /// sistema o estragaria.
 pub const SELF_MANAGED: bool = cfg!(windows) && !cfg!(debug_assertions);
 
+/// Um PDF que passava do limite do email e o que organizar fez com ele.
+pub struct Reshaped {
+    pub name: String,
+    pub before: u64,
+    pub after: u64,
+    /// Em quantos arquivos ficou; 1 quando coube inteiro depois de regravado.
+    pub parts: usize,
+    pub pages: usize,
+    /// Se alguma parte ainda passa do limite (uma página sozinha grande demais).
+    pub over: bool,
+}
+
 pub enum Modal {
     None,
     /// Na primeira abertura fora da pasta de instalação; `desktop` é a caixa do atalho.
@@ -107,6 +119,13 @@ pub enum Modal {
     },
     OrganizeSetup,
     Organizing(Arc<Progress>),
+    /// O que organizar fez com os PDFs que passavam do limite, para ninguém ter de conferir.
+    OrganizeDone {
+        emails: usize,
+        pdfs: usize,
+        limit: u64,
+        changed: Vec<Reshaped>,
+    },
     Saving(Arc<Progress>),
     Message {
         title: String,
@@ -152,9 +171,12 @@ pub struct App {
     pub textures: HashMap<render::Key, egui::TextureHandle>,
     pub failed: HashSet<render::Key>,
     pub wanted: Vec<render::Job>,
+    /// As miniaturas que o minimapa mostrou no último quadro (primeira e última página).
+    pub thumbs_shown: Option<(usize, usize)>,
     /// A largura em pixels pedida para cada página perto da tela.
     pub desired: HashMap<usize, u32>,
     pub zoom: f32,
+    pub view: viewer::View,
     pub current_page: usize,
     pub scroll_to: Option<usize>,
     /// Quando a lista foi organizada em emails, para a animação de entrada.
@@ -188,8 +210,10 @@ impl App {
             textures: HashMap::new(),
             failed: HashSet::new(),
             wanted: Vec::new(),
+            thumbs_shown: None,
             desired: HashMap::new(),
             zoom: 1.0,
+            view: viewer::View::default(),
             current_page: 0,
             scroll_to: None,
             organized_at: None,
@@ -327,12 +351,36 @@ impl App {
     }
 
     fn apply_organize(&mut self, limit: u64, split: Vec<state::SplitDoc>, ctx: &egui::Context) {
-        self.checkpoint();
         let mut split: HashMap<u64, Vec<Doc>> = split.into_iter().map(|s| (s.id, s.parts)).collect();
+        // Nenhuma página pode sumir: se a soma das partes não bate, a lista fica como estava.
+        let lost = self
+            .state
+            .docs
+            .iter()
+            .find(|d| split.get(&d.id).is_some_and(|parts| parts.iter().map(|p| p.pages.len()).sum::<usize>() != d.pages.len()));
+        if let Some(doc) = lost {
+            self.modal = Modal::Message {
+                title: "Não foi possível organizar".into(),
+                lines: vec![format!("{}: a divisão não manteve todas as páginas. Nada foi alterado.", doc.name)],
+            };
+            return;
+        }
+        self.checkpoint();
+        let mut changed = Vec::new();
         let old = std::mem::take(&mut self.state.docs);
         for doc in old {
             match split.remove(&doc.id) {
-                Some(parts) => self.state.docs.extend(parts),
+                Some(parts) => {
+                    changed.push(Reshaped {
+                        name: doc.name.clone(),
+                        before: doc.size(),
+                        after: parts.iter().map(Doc::size).sum(),
+                        parts: parts.len(),
+                        pages: doc.pages.len(),
+                        over: parts.iter().any(|p| p.error.is_some()),
+                    });
+                    self.state.docs.extend(parts);
+                }
                 None => self.state.docs.push(doc),
             }
         }
@@ -343,7 +391,13 @@ impl App {
         self.state.organized = Some(limit);
         self.collapsed.clear();
         self.organized_at = Some(ctx.input(|i| i.time));
-        self.modal = Modal::None;
+        // Se algum PDF foi regravado ou dividido, o resumo diz o que aconteceu com ele.
+        self.modal = if changed.is_empty() {
+            Modal::None
+        } else {
+            let emails = self.state.emails().map_or(0, |e| e.len());
+            Modal::OrganizeDone { emails, pdfs: self.state.docs.len(), limit, changed }
+        };
         self.fix_selection();
     }
 
@@ -558,6 +612,19 @@ impl App {
         }
         if pressed(Modifiers::COMMAND, Key::O) {
             self.pick_files(ctx);
+        }
+        // Ctrl + e Ctrl − ampliam o documento, não a interface (veja `theme::install`). O teclado
+        // numérico chega como as mesmas teclas.
+        if self.selected_doc().is_some() {
+            if pressed(Modifiers::COMMAND, Key::Num0) {
+                viewer::set_zoom(self, 1.0, None);
+            }
+            if pressed(Modifiers::COMMAND, Key::Plus) || pressed(Modifiers::COMMAND, Key::Equals) {
+                viewer::set_zoom(self, self.zoom * viewer::ZOOM_STEP, None);
+            }
+            if pressed(Modifiers::COMMAND, Key::Minus) {
+                viewer::set_zoom(self, self.zoom / viewer::ZOOM_STEP, None);
+            }
         }
         if pressed(Modifiers::NONE, Key::Delete)
             && let Some(id) = self.selected

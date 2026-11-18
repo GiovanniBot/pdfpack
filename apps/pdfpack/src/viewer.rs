@@ -1,6 +1,6 @@
 //! O visualizador do PDF selecionado, com seus controles flutuantes, e o minimapa de páginas.
 
-use egui::{Align2, Color32, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+use egui::{Align2, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 
 use crate::core::human_size;
 use crate::icons::Icon;
@@ -13,6 +13,89 @@ const PAD: f32 = 22.0;
 const GAP: f32 = 14.0;
 const THUMB: f32 = 104.0;
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+pub const MIN_ZOOM: f32 = 0.3;
+pub const MAX_ZOOM: f32 = 4.0;
+/// O passo dos botões e do teclado.
+pub const ZOOM_STEP: f32 = 1.2;
+
+/// Como o visualizador foi desenhado no último quadro, para o zoom seguinte manter o lugar.
+#[derive(Default)]
+pub struct View {
+    drawn: Option<Drawn>,
+    /// O ponto da tela que deve ficar parado no próximo zoom (o ponteiro); sem ele, o centro.
+    focus: Option<Pos2>,
+}
+
+#[derive(Clone, Copy)]
+struct Drawn {
+    doc: u64,
+    zoom: f32,
+    scale: f32,
+    offset: Vec2,
+    /// Onde, na tela, fica a parte visível do documento.
+    viewport: Rect,
+}
+
+/// Muda o zoom do documento; `focus` é o ponto da tela que fica parado (sem ele, o centro).
+pub fn set_zoom(app: &mut App, zoom: f32, focus: Option<Pos2>) {
+    let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+    if zoom.is_finite() && zoom != app.zoom {
+        app.zoom = zoom;
+        app.view.focus = focus;
+    }
+}
+
+/// Onde começa cada página, de cima para baixo, numa escala.
+fn page_tops(pages: &[[f32; 2]], scale: f32) -> Vec<f32> {
+    let mut tops = Vec::with_capacity(pages.len());
+    let mut y = PAD;
+    for p in pages {
+        tops.push(y);
+        y += p[1] * scale + GAP;
+    }
+    tops
+}
+
+/// A largura do conteúdo: a página mais larga com as margens, ou a largura do visualizador.
+fn content_width(widest: f32, scale: f32, avail_width: f32) -> f32 {
+    (widest * scale + 2.0 * PAD).max(avail_width - 10.0)
+}
+
+/// Leva uma altura do documento de uma escala para outra. Só as páginas crescem: as margens e
+/// os espaços entre páginas ficam do mesmo tamanho.
+fn rescale_y(pages: &[[f32; 2]], old: f32, new: f32, y: f32) -> f32 {
+    if y <= PAD {
+        return y;
+    }
+    let (mut top_old, mut top_new) = (PAD, PAD);
+    for (i, p) in pages.iter().enumerate() {
+        let (h_old, h_new) = (p[1] * old, p[1] * new);
+        let local = y - top_old;
+        if local <= h_old {
+            return top_new + if h_old > 0.0 { local / h_old * h_new } else { 0.0 };
+        }
+        if local <= h_old + GAP || i + 1 == pages.len() {
+            return top_new + h_new + (local - h_old);
+        }
+        top_old += h_old + GAP;
+        top_new += h_new + GAP;
+    }
+    y
+}
+
+/// O novo deslocamento da rolagem para que o ponto do documento sob `anchor` (relativo ao canto
+/// da parte visível) continue sob ele depois de a escala passar de `old` para `new`.
+fn anchored_offset(pages: &[[f32; 2]], widest: f32, avail_width: f32, old: f32, new: f32, offset: Vec2, anchor: Vec2) -> Vec2 {
+    if !(old > 0.0 && new > 0.0 && old.is_finite() && new.is_finite()) {
+        return offset;
+    }
+    // As páginas ficam centradas na horizontal: o que cresce é a distância até o centro.
+    let center_old = content_width(widest, old, avail_width) / 2.0;
+    let center_new = content_width(widest, new, avail_width) / 2.0;
+    let x = center_new + (offset.x + anchor.x - center_old) * new / old;
+    let y = rescale_y(pages, old, new, offset.y + anchor.y);
+    vec2((x - anchor.x).max(0.0), (y - anchor.y).max(0.0))
+}
 
 /// A melhor imagem que já existe da página: a do tamanho pedido, outra ampliação, ou a miniatura.
 fn best_texture(app: &App, exact: Key) -> (Option<egui::TextureId>, bool) {
@@ -33,7 +116,8 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
     let ppp = ui.ctx().pixels_per_point();
     let zoom = ui.input(|i| i.zoom_delta());
     if zoom != 1.0 && ui.rect_contains_pointer(ui.max_rect()) {
-        app.zoom = (app.zoom * zoom).clamp(0.3, 4.0);
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        set_zoom(app, app.zoom * zoom, pointer);
     }
     // A faixa com o nome do arquivo e a página atual.
     let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
@@ -53,23 +137,25 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
     // Com zoom 1 a página mais larga ocupa a largura do visualizador (até um tamanho confortável).
     let fit = (avail.width() - 2.0 * PAD - 10.0).clamp(120.0, 980.0);
     let scale = fit * app.zoom / widest;
-    let mut tops = Vec::with_capacity(doc.pages.len());
-    let mut y = PAD;
-    for p in doc.pages.iter() {
-        tops.push(y);
-        y += p[1] * scale + GAP;
-    }
-    let total = vec2((widest * scale + 2.0 * PAD).max(avail.width() - 10.0), y - GAP + PAD);
+    let tops = page_tops(&doc.pages, scale);
+    let bottom = tops.last().zip(doc.pages.last()).map_or(PAD, |(t, p)| t + p[1] * scale);
+    let total = vec2(content_width(widest, scale, avail.width()), bottom + PAD);
 
     let mut area = egui::ScrollArea::both().id_salt(("viewer", doc.id)).auto_shrink(false);
+    let focus = app.view.focus.take();
     if let Some(page) = app.scroll_to.take() {
         area = area.vertical_scroll_offset(tops.get(page).map_or(0.0, |t| (t - PAD / 2.0).max(0.0)));
+    } else if let Some(drawn) = app.view.drawn.filter(|d| d.doc == doc.id && d.zoom != app.zoom) {
+        // O zoom mudou: o ponto sob o ponteiro (ou o centro) fica onde estava, já neste quadro.
+        // Sem isso a rolagem guardaria os mesmos pixels, que com páginas maiores caem em outra.
+        let anchor = focus.filter(|p| drawn.viewport.contains(*p)).unwrap_or(drawn.viewport.center()) - drawn.viewport.min;
+        area = area.scroll_offset(anchored_offset(&doc.pages, widest, avail.width(), drawn.scale, scale, drawn.offset, anchor));
     }
     let mut visible: Vec<Job> = Vec::new();
     let mut nearby: Vec<Job> = Vec::new();
     let mut current = app.current_page;
     app.desired.clear();
-    area.show_viewport(ui, |ui, viewport| {
+    let output = area.show_viewport(ui, |ui, viewport| {
         let (space, _) = ui.allocate_exact_size(total, Sense::hover());
         let focus = viewport.min.y + viewport.height() * 0.35;
         for (i, p) in doc.pages.iter().enumerate() {
@@ -100,6 +186,7 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
             }
         }
     });
+    app.view.drawn = Some(Drawn { doc: doc.id, zoom: app.zoom, scale, offset: output.state.clamped_offset(), viewport: output.inner_rect });
     app.current_page = current.min(doc.pages.len().saturating_sub(1));
     controls(app, ui, avail);
     // As páginas na tela primeiro; as vizinhas depois das miniaturas pedidas antes.
@@ -126,6 +213,7 @@ pub fn minimap(app: &mut App, ui: &mut Ui) {
         changed
     });
     let mut jobs: Vec<Job> = Vec::new();
+    let mut shown: Option<(usize, usize)> = None;
     egui::ScrollArea::vertical().id_salt(("minimap", doc.id)).auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 4.0;
         let width = ui.available_width();
@@ -143,6 +231,7 @@ pub fn minimap(app: &mut App, ui: &mut Ui) {
             if !ui.is_rect_visible(slot.expand(300.0)) {
                 continue;
             }
+            shown = Some((shown.map_or(i, |s| s.0), i));
             let rect = Rect::from_min_size(pos2(slot.center().x - w / 2.0, slot.min.y + 2.0), vec2(w, h));
             let key = Key { doc: doc.id, version: doc.version, page: i, kind: Kind::Thumb };
             let painter = ui.painter();
@@ -175,7 +264,15 @@ pub fn minimap(app: &mut App, ui: &mut Ui) {
             );
         }
     });
+    app.thumbs_shown = shown;
     app.wanted.append(&mut jobs);
+}
+
+/// Se a miniatura da página `page` fica guardada: as vizinhas da página aberta e as vizinhas do
+/// trecho que o minimapa mostra. Só a primeira regra soltava as miniaturas recém-desenhadas de
+/// quem rolava o minimapa para longe da página aberta, e elas piscavam sem parar.
+fn keeps_thumb(page: usize, current: usize, shown: Option<(usize, usize)>) -> bool {
+    page.abs_diff(current) < 200 || shown.is_some_and(|(first, last)| page.saturating_add(60) >= first && page <= last.saturating_add(60))
 }
 
 /// Solta as imagens que não servem mais: de outro PDF, de outra versão ou de páginas distantes.
@@ -186,6 +283,7 @@ pub fn evict(app: &mut App) {
         return;
     };
     let current = app.current_page;
+    let shown = app.thumbs_shown;
     // As páginas que já têm a imagem do tamanho pedido: delas, as outras ampliações podem sair.
     let ready: std::collections::HashSet<usize> = app
         .desired
@@ -199,7 +297,7 @@ pub fn evict(app: &mut App) {
             return false;
         }
         match k.kind {
-            Kind::Thumb => k.page.abs_diff(current) < 200,
+            Kind::Thumb => keeps_thumb(k.page, current, shown),
             Kind::Page(w) => desired.get(&k.page).is_some_and(|px| *px == w || !ready.contains(&k.page)),
         }
     });
@@ -220,8 +318,11 @@ fn controls(app: &mut App, ui: &mut Ui, area: Rect) {
             frame.show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    if theme::icon_button(ui, Icon::ZoomOut, theme::Kind::Ghost, app.zoom > 0.31).on_hover_text("Reduzir").clicked() {
-                        app.zoom = (app.zoom / 1.2).max(0.3);
+                    if theme::icon_button(ui, Icon::ZoomOut, theme::Kind::Ghost, app.zoom > MIN_ZOOM + 0.01)
+                        .on_hover_text(format!("Reduzir ({})", theme::shortcut("-")))
+                        .clicked()
+                    {
+                        set_zoom(app, app.zoom / ZOOM_STEP, None);
                     }
                     let (rect, resp) = ui.allocate_exact_size(vec2(52.0, 32.0), Sense::click());
                     ui.painter().text(
@@ -231,19 +332,19 @@ fn controls(app: &mut App, ui: &mut Ui, area: Rect) {
                         theme::semibold(12.5),
                         if resp.hovered() { ACCENT } else { TEXT },
                     );
-                    if resp.on_hover_text("Voltar a 100%").clicked() {
-                        app.zoom = 1.0;
+                    if resp.on_hover_text(format!("Voltar a 100% ({})", theme::shortcut("0"))).clicked() {
+                        set_zoom(app, 1.0, None);
                     }
-                    if theme::icon_button(ui, Icon::ZoomIn, theme::Kind::Ghost, app.zoom < 3.99)
-                        .on_hover_text(format!("Ampliar ({})", theme::shortcut("roda do mouse")))
+                    if theme::icon_button(ui, Icon::ZoomIn, theme::Kind::Ghost, app.zoom < MAX_ZOOM - 0.01)
+                        .on_hover_text(format!("Ampliar ({} ou {})", theme::shortcut("+"), theme::shortcut("roda do mouse")))
                         .clicked()
                     {
-                        app.zoom = (app.zoom * 1.2).min(4.0);
+                        set_zoom(app, app.zoom * ZOOM_STEP, None);
                     }
                     let (line, _) = ui.allocate_exact_size(vec2(9.0, 32.0), Sense::hover());
                     ui.painter().vline(line.center().x, line.y_range().shrink(8.0), Stroke::new(1.0, BORDER));
                     if theme::icon_button(ui, Icon::Fit, theme::Kind::Ghost, true).on_hover_text("Ajustar à largura").clicked() {
-                        app.zoom = 1.0;
+                        set_zoom(app, 1.0, None);
                     }
                 });
             });
@@ -290,5 +391,80 @@ pub fn toast(app: &mut App, ctx: &egui::Context, anchor: egui::Pos2) {
             Some(ToastAction::Restart) => app.restart(ctx),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A página sob uma altura do documento e quanto dela (0 a 1) fica acima do ponto.
+    fn spot(pages: &[[f32; 2]], scale: f32, y: f32) -> (usize, f32) {
+        let tops = page_tops(pages, scale);
+        let i = tops.iter().rposition(|t| *t <= y).unwrap_or(0);
+        (i, (y - tops[i]) / (pages[i][1] * scale))
+    }
+
+    #[test]
+    fn zoom_keeps_the_page_under_the_anchor() {
+        let pages = vec![[612.0, 792.0]; 12];
+        let (avail, old, new) = (900.0, 1.4, 1.4 * 1.2);
+        // No meio do documento, com o centro da tela no meio da sétima página.
+        let anchor = vec2(440.0, 300.0);
+        let target = page_tops(&pages, old)[6] + 792.0 * old * 0.5;
+        let offset = vec2(0.0, target - anchor.y);
+        let after = anchored_offset(&pages, 612.0, avail, old, new, offset, anchor);
+        let (page, frac) = spot(&pages, new, after.y + anchor.y);
+        assert_eq!(page, 6);
+        assert!((frac - 0.5).abs() < 1e-3, "{frac}");
+        // E na volta, o mesmo lugar de antes.
+        let back = anchored_offset(&pages, 612.0, avail, new, old, after, anchor);
+        assert!((back - offset).length() < 1e-2, "{back:?}");
+    }
+
+    #[test]
+    fn zoom_keeps_the_point_under_the_pointer_sideways() {
+        let pages = vec![[612.0, 792.0]; 3];
+        let (avail, old, new) = (900.0, 1.4, 2.0);
+        let anchor = vec2(100.0, 50.0);
+        let offset = vec2(120.0, 400.0);
+        let after = anchored_offset(&pages, 612.0, avail, old, new, offset, anchor);
+        // O ponto sob o ponteiro, medido a partir da borda esquerda da página, em pontos do PDF.
+        let left = |s: f32| (content_width(612.0, s, avail) - 612.0 * s) / 2.0;
+        let before_x = (offset.x + anchor.x - left(old)) / old;
+        let after_x = (after.x + anchor.x - left(new)) / new;
+        assert!((before_x - after_x).abs() < 1e-3, "{before_x} {after_x}");
+    }
+
+    #[test]
+    fn gaps_and_margins_do_not_grow() {
+        let pages = vec![[612.0, 792.0]; 3];
+        assert_eq!(rescale_y(&pages, 1.0, 2.0, 10.0), 10.0);
+        // Um ponto no espaço entre a primeira e a segunda página fica à mesma distância dela.
+        let y = PAD + 792.0 + 5.0;
+        assert_eq!(rescale_y(&pages, 1.0, 2.0, y), PAD + 2.0 * 792.0 + 5.0);
+    }
+
+    #[test]
+    fn hostile_scales_leave_the_offset_alone() {
+        let pages = vec![[612.0, 792.0]; 2];
+        let offset = vec2(3.0, 4.0);
+        assert_eq!(anchored_offset(&pages, 612.0, 900.0, 0.0, 1.0, offset, Vec2::ZERO), offset);
+        assert_eq!(anchored_offset(&pages, 612.0, 900.0, 1.0, f32::NAN, offset, Vec2::ZERO), offset);
+        // Sem páginas não há o que manter no lugar na vertical, e nada quebra.
+        let empty = anchored_offset(&[], 612.0, 900.0, 1.0, 2.0, offset, Vec2::ZERO);
+        assert!(empty.x.is_finite() && empty.y == offset.y, "{empty:?}");
+    }
+
+    #[test]
+    fn thumbnails_far_from_the_open_page_stay_while_the_minimap_shows_them() {
+        // Página 1 aberta, minimapa rolado até o fim de um PDF de 600 páginas.
+        assert!(keeps_thumb(590, 0, Some((585, 599))));
+        assert!(keeps_thumb(540, 0, Some((585, 599))));
+        assert!(!keeps_thumb(400, 0, Some((585, 599))));
+        // E o contrário: última página aberta, minimapa no começo.
+        assert!(keeps_thumb(3, 599, Some((0, 12))));
+        assert!(!keeps_thumb(300, 599, Some((0, 12))));
+        assert!(keeps_thumb(150, 0, None));
     }
 }

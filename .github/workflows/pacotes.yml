@@ -1,0 +1,64 @@
+name: Pacotes para macOS e Linux
+
+# O executável do Windows é compilado e publicado por scripts/release.ps1. Este fluxo completa a
+# release com os pacotes dos outros dois sistemas, que não dá para compilar em um Windows:
+# roda sozinho quando uma release é publicada, ou à mão (Actions ▸ Run workflow).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release que recebe os pacotes (por exemplo v0.1.6). Vazio: só compila e guarda os pacotes nesta execução."
+        required: false
+        default: ""
+
+# Ler o código e anexar arquivos à release. Nada mais.
+permissions:
+  contents: write
+
+concurrency:
+  group: pacotes-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  pacote:
+    name: ${{ matrix.nome }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # O Ubuntu mais antigo disponível: o executável roda nas distribuições mais novas, mas
+          # não o contrário.
+          - nome: Linux
+            os: ubuntu-22.04
+            script: scripts/package-linux.sh
+            arquivo: dist/pdfpack-linux-x86_64.tar.gz
+          - nome: macOS
+            os: macos-latest
+            script: scripts/package-macos.sh
+            arquivo: dist/PDFPack-macos.zip
+    steps:
+      # Na release, o código daquela versão; à mão, o do ramo escolhido.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+      - name: Testes
+        run: cargo test --release --locked -p pdfpack
+      - name: Compilar e empacotar
+        run: bash "${{ matrix.script }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdfpack-${{ matrix.nome }}
+          path: ${{ matrix.arquivo }}
+          if-no-files-found: error
+      - name: Anexar à release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "${{ matrix.arquivo }}" --repo "$GITHUB_REPOSITORY" --clobber
