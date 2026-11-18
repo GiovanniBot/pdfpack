@@ -378,7 +378,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     }
                 });
                 if changed.iter().any(|c| c.parts == 1) {
-                    muted(ui, "O arquivo que coube inteiro foi regravado sem as imagens que nenhuma página mostrava. Nada visível mudou.");
+                    muted(ui, "O arquivo que coube inteiro foi regravado só com o que as páginas usam: os dados de edição que o programa de origem guardou nele ficaram de fora. Nada visível mudou.");
                 }
                 if buttons(ui, Some((Icon::Check, "Continuar")), None).0 {
                     next = Next::Close;

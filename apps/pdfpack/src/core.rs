@@ -53,6 +53,9 @@ impl Level {
             color: image,
             gray: image,
             mono: MonoSettings { downsample: true, target_ppi: mono_ppi, above_ppi: mono_above, compression: MonoCompression::CcittG4 },
+            // A cópia de edição que Illustrator, InDesign e outros guardam dentro do PDF: nunca
+            // aparece na página e pode ser maior que o próprio PDF.
+            discard_private_data: true,
             ..Settings::default()
         }
     }
@@ -234,6 +237,61 @@ mod tests {
         assert_eq!(v, ["1. c.pdf", "2. a.pdf", "10. z.pdf", "a.pdf", "b.pdf"]);
     }
 
+    /// Um PDF de uma página com uma foto sintética de 1200 × 1200 px em 4 × 4 polegadas (300 ppi).
+    fn photo_pdf() -> Bytes {
+        use pdfcraft_cos::{Dict, Object, Stream};
+        let side = 1200u32;
+        let mut px = Vec::with_capacity((side * side * 3) as usize);
+        for y in 0..side {
+            for x in 0..side {
+                let t = ((x ^ y) & 15) as u8;
+                px.extend([(x * 255 / side) as u8 ^ t, (y * 255 / side) as u8, ((x + y) * 127 / side) as u8 ^ (t << 2)]);
+            }
+        }
+        let mut doc = Document::new_empty();
+        let mut d = Dict::new();
+        d.set(b"Type".to_vec(), Object::name("XObject"));
+        d.set(b"Subtype".to_vec(), Object::name("Image"));
+        d.set(b"Width".to_vec(), Object::Int(side as i64));
+        d.set(b"Height".to_vec(), Object::Int(side as i64));
+        d.set(b"BitsPerComponent".to_vec(), Object::Int(8));
+        d.set(b"ColorSpace".to_vec(), Object::name("DeviceRGB"));
+        let img = doc.add(Object::Stream(Stream::flate(d, &px)));
+        let pages = doc.root().and_then(|r| doc.get(r).as_dict().and_then(|d| d.reference(b"Pages"))).expect("pages");
+        let mut x = Dict::new();
+        x.set(b"Im".to_vec(), Object::Ref(img));
+        let mut res = Dict::new();
+        res.set(b"XObject".to_vec(), Object::Dict(x));
+        let c = doc.add(Object::Stream(Stream::from_raw(Dict::new(), b"q 288 0 0 288 0 0 cm /Im Do Q".to_vec())));
+        let mut p = Dict::new();
+        p.set(b"Type".to_vec(), Object::name("Page"));
+        p.set(b"Parent".to_vec(), Object::Ref(pages));
+        p.set(b"MediaBox".to_vec(), Object::Array(vec![0.into(), 0.into(), 288.into(), 288.into()]));
+        p.set(b"Resources".to_vec(), Object::Dict(res));
+        p.set(b"Contents".to_vec(), Object::Ref(c));
+        let page = doc.add(Object::Dict(p));
+        doc.update_dict(pages, |d| {
+            d.set(b"Kids".to_vec(), Object::Array(vec![Object::Ref(page)]));
+            d.set(b"Count".to_vec(), Object::Int(1));
+        })
+        .expect("pages");
+        Arc::new(write_full(&doc, &SaveOptions::default()).expect("save"))
+    }
+
+    /// Comprimir na Extrema um arquivo já comprimido na Média ainda diminui, e não fica muito
+    /// maior que a Extrema direto do original (o app parte sempre do original, mas o arquivo
+    /// salvo pode ser aberto e comprimido de novo).
+    #[test]
+    fn extrema_over_media_still_shrinks() {
+        let original = photo_pdf();
+        let media: Bytes = Arc::new(compress(&original, Level::Media, &mut |_| true).expect("média"));
+        let both = compress(&media, Level::Extrema, &mut |_| true).expect("extrema depois da média");
+        let direct = compress(&original, Level::Extrema, &mut |_| true).expect("extrema");
+        assert!(media.len() < original.len(), "{} -> {}", original.len(), media.len());
+        assert!(both.len() < media.len(), "média {} -> extrema {}", media.len(), both.len());
+        assert!(both.len() * 10 <= direct.len() * 11, "por cima {} contra direto {}", both.len(), direct.len());
+    }
+
     /// Com um PDF de verdade: `PDFPACK_SAMPLE=arquivo.pdf cargo test -p pdfpack --release -- --ignored --nocapture`.
     #[test]
     #[ignore = "precisa de PDFPACK_SAMPLE"]
@@ -244,6 +302,30 @@ mod tests {
             let t = std::time::Instant::now();
             let out = compress(&bytes, level, &mut |_| true).expect("compress");
             println!("{:8} {} -> {} em {:?}", level.name(), human_size(bytes.len() as u64), human_size(out.len() as u64), t.elapsed());
+            // Algumas páginas desenhadas antes e depois: a diferença média por componente de cor.
+            let draw = |b: &Bytes, page: usize| {
+                let mut r = pdfcraft_render::PageRenderer::new(b.clone(), pdfcraft_render::RenderConfig::default());
+                let out = r.render(pdfcraft_render::RenderRequest { page, scale: 1.0, ..Default::default() });
+                assert!(out.error.is_none(), "{:?}", out.error);
+                AsRef::<[u8]>::as_ref(&out.rgba).to_vec()
+            };
+            let out_bytes: Bytes = Arc::new(out.clone());
+            let pages = pdfcraft_organize::page_count(&Document::open(bytes.clone()).expect("open")).expect("pages");
+            let mut diffs: Vec<(f64, usize)> = (0..pages)
+                .map(|page| {
+                    let (a, b) = (draw(&bytes, page), draw(&out_bytes, page));
+                    assert_eq!(a.len(), b.len());
+                    (a.iter().zip(&b).map(|(x, y)| u64::from(x.abs_diff(*y))).sum::<u64>() as f64 / a.len().max(1) as f64, page)
+                })
+                .collect();
+            diffs.sort_by(|a, b| b.0.total_cmp(&a.0));
+            for (diff, page) in diffs.iter().take(3) {
+                println!("    página {}: diferença média {diff:.2} (de 255)", page + 1);
+            }
+            // `PDFPACK_OUT=pasta` guarda cada resultado lá, para conferir.
+            if let Some(dir) = std::env::var_os("PDFPACK_OUT") {
+                std::fs::write(std::path::Path::new(&dir).join(format!("{}.pdf", level.name())), &out).expect("write");
+            }
         }
         let limit = (bytes.len() as u64 / 3).max(1);
         let t = std::time::Instant::now();

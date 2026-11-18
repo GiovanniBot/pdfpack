@@ -237,6 +237,11 @@ pub struct Settings {
     /// actions with an `/F`, out of links and bookmarks; a link left with nothing to do is
     /// removed. Links within the document and web links stay.
     pub discard_external_refs: bool,
+    /// Discard User Data: remove `/PieceInfo` (private data of other applications, ISO 32000-2
+    /// §14.5) from the catalog, pages and forms. It is never drawn: an editor such as Illustrator
+    /// keeps a whole copy of its own document there, often larger than the PDF itself. The objects
+    /// only it refers to are left out by the full save. Off by default.
+    pub discard_private_data: bool,
 }
 
 impl Settings {
@@ -269,6 +274,7 @@ impl Default for Settings {
             remove_invalid_links: true,
             remove_unreferenced_dests: true,
             discard_external_refs: false,
+            discard_private_data: false,
         }
     }
 }
@@ -344,6 +350,8 @@ pub struct Report {
     /// cleared, because they opened another document (Discard external cross-references).
     pub external_links: usize,
     pub external_bookmarks: usize,
+    /// Catalog, pages and forms whose `/PieceInfo` was removed (Discard private data).
+    pub private_data: usize,
     /// Images and forms the pages listed but never drew, dropped (Clean Up).
     pub unused_xobjects: usize,
 }
@@ -465,6 +473,7 @@ pub fn optimize_with_progress(doc: &mut Document, settings: &Settings, progress:
         report.external_links = l;
         report.external_bookmarks = b;
     }
+    report.private_data = discard_private_data(doc, settings)?;
     if settings.remove_unreferenced_dests {
         report.unreferenced_dests = links::remove_unreferenced_dests(doc)?;
     }
@@ -695,6 +704,37 @@ fn discard_search_index(doc: &mut Document, root: ObjRef) -> Result<usize, Optim
         }
     })?;
     Ok(removed)
+}
+
+/// Remove `/PieceInfo` from the catalog, every page and every form XObject
+/// ([`Settings::discard_private_data`]), and return from how many. Those are the objects that
+/// may hold it (§14.5), and all are indirect. Nothing when the setting is off.
+fn discard_private_data(doc: &mut Document, settings: &Settings) -> Result<usize, OptimizeError> {
+    if !settings.discard_private_data {
+        return Ok(0);
+    }
+    let root = doc.root();
+    let mut n = 0;
+    for num in doc.object_numbers() {
+        let r = ObjRef { num, generation: doc.generation(num) };
+        let obj = doc.get(r);
+        match &*obj {
+            Object::Dict(d) if d.contains(b"PieceInfo") && (Some(r) == root || d.name(b"Type") == Some(b"Page")) => {
+                doc.update_dict(r, |d| {
+                    d.remove(b"PieceInfo");
+                })?;
+                n += 1;
+            }
+            Object::Stream(s) if s.dict.contains(b"PieceInfo") && s.dict.name(b"Subtype") == Some(b"Form") => {
+                let mut s = s.clone();
+                s.dict.remove(b"PieceInfo");
+                doc.set(r, Object::Stream(s));
+                n += 1;
+            }
+            _ => {}
+        }
+    }
+    Ok(n)
 }
 
 /// Whether a `/PieceInfo` application name names a search index: it contains "index" in any

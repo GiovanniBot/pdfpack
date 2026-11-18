@@ -441,6 +441,86 @@ pub(crate) fn components(doc: &Document, cs: &Object) -> Option<usize> {
     }
 }
 
+/// An indexed image's palette (ISO 32000-2 §8.6.6.3), for a picture of eight bits a sample: its
+/// base space, which a picture expanded from it is stored in, and its colours.
+pub(crate) struct Palette {
+    base: Object,
+    /// `hival + 1` colours of the base space's components, one byte each.
+    table: Vec<u8>,
+}
+
+impl Palette {
+    /// The 8-bit samples of `indices` in the base space, `n` components each, each index read
+    /// as `255 - index` if `inverted` (a decode array of [255 0]). An index past the table is
+    /// drawn as its last colour (§8.6.6.3: out of range values are clipped).
+    fn expand(&self, indices: &[u8], n: usize, inverted: bool) -> Option<Vec<u8>> {
+        let colours = self.table.len() / n.max(1);
+        let last = colours.checked_sub(1)?;
+        let mut out = Vec::new();
+        out.try_reserve_exact(indices.len().checked_mul(n)?).ok()?;
+        for &i in indices {
+            let i = if inverted { 255 - i } else { i };
+            let at = usize::from(i).min(last).checked_mul(n)?;
+            out.extend_from_slice(self.table.get(at..at.checked_add(n)?)?);
+        }
+        Some(out)
+    }
+}
+
+/// How a picture that [`components`] doesn't take is processed: CMYK (four components, stored
+/// with Flate only), or an indexed space over grey, RGB or CMYK, expanded to its base space.
+/// `None` for any other space (separations, DeviceN, Lab, a lookup that can't be read).
+pub(crate) fn other_space(doc: &Document, cs: &Object, budget: &mut ImageBudget) -> Option<(usize, Option<Palette>)> {
+    if cmyk(doc, cs) {
+        return Some((4, None));
+    }
+    let cs = doc.resolve(cs);
+    let a = cs.as_array()?;
+    if !matches!(a.first()?.as_name()?, b"Indexed" | b"I") {
+        return None;
+    }
+    let base = (*doc.resolve(a.get(1)?)).clone();
+    let n = match components(doc, &base) {
+        Some(n) => n,
+        None if cmyk(doc, &base) => 4,
+        None => return None,
+    };
+    let hival = usize::try_from(doc.resolve(a.get(2)?).as_int()?).ok().filter(|h| *h <= 255)?;
+    let need = hival.checked_add(1)?.checked_mul(n)?;
+    let table = match &*doc.resolve(a.get(3)?) {
+        Object::String(b) => b.bytes.clone(),
+        Object::Stream(l) => budget.decode_filters(doc, l, need.checked_add(4096)?).ok()?,
+        _ => return None,
+    };
+    let table = table.get(..need)?.to_vec();
+    Some((n, Some(Palette { base: a.get(1)?.clone(), table })))
+}
+
+/// Whether `cs` is DeviceCMYK, or ICC-based with four components.
+fn cmyk(doc: &Document, cs: &Object) -> bool {
+    match &*doc.resolve(cs) {
+        Object::Name(n) => matches!(n.as_slice(), b"DeviceCMYK" | b"CMYK"),
+        Object::Array(a) => {
+            a.first().and_then(Object::as_name) == Some(b"ICCBased")
+                && a.get(1).is_some_and(|icc| matches!(&*doc.resolve(icc), Object::Stream(s) if s.dict.int(b"N") == Some(4)))
+        }
+        _ => false,
+    }
+}
+
+/// How the decode array of an indexed image of eight bits reads its indices: `Some(false)` for
+/// the default one, [0 255], `Some(true)` for [255 0], which reads index `i` as `255 - i`
+/// (§8.9.5.2). `None` for any other, which maps indices between whole numbers.
+fn index_decode(doc: &Document, decode: &Object) -> Option<bool> {
+    let decode = doc.resolve(decode);
+    let [lo, hi] = decode.as_array()?.as_slice() else { return None };
+    match (doc.resolve(lo).as_f64()?, doc.resolve(hi).as_f64()?) {
+        (0.0, 255.0) => Some(false),
+        (255.0, 0.0) => Some(true),
+        _ => None,
+    }
+}
+
 pub(crate) fn is_dct(s: &Stream) -> Option<bool> {
     match s.dict.get(b"Filter") {
         None => Some(false),
@@ -660,7 +740,26 @@ fn jpeg_samples(data: &[u8], w: usize, h: usize, n: usize, ycc: bool) -> Option<
 pub(crate) fn resample(px: &[u8], n: usize, w: u32, h: u32, nw: u32, nh: u32) -> Option<Vec<u8>> {
     Some(match n {
         1 => scaled(&image::GrayImage::from_raw(w, h, px.to_vec())?, nw, nh).into_raw(),
-        _ => scaled(&image::RgbImage::from_raw(w, h, px.to_vec())?, nw, nh).into_raw(),
+        3 => scaled(&image::RgbImage::from_raw(w, h, px.to_vec())?, nw, nh).into_raw(),
+        // CMYK: each ink on its own, as grey, so no channel is taken for alpha.
+        4 => {
+            let planes = (0..4)
+                .map(|c| {
+                    let plane: Vec<u8> = px.iter().skip(c).step_by(4).copied().collect();
+                    Some(scaled(&image::GrayImage::from_raw(w, h, plane)?, nw, nh).into_raw())
+                })
+                .collect::<Option<Vec<_>>>()?;
+            let len = planes.first()?.len();
+            let mut out = Vec::new();
+            out.try_reserve_exact(len.checked_mul(4)?).ok()?;
+            for i in 0..len {
+                for p in &planes {
+                    out.push(*p.get(i)?);
+                }
+            }
+            out
+        }
+        _ => return None,
     })
 }
 
@@ -720,18 +819,39 @@ pub(crate) fn is_identity_decode(doc: &Document, decode: &Object, n: usize) -> b
 /// the filter parameters: the samples are decoded, and a JPEG written here is plain YCbCr with no
 /// Adobe marker, which is what a missing /ColorTransform means.
 fn image_stream(old: &Dict, px: &[u8], n: usize, w: u32, h: u32, compression: Compression, was_dct: bool) -> Option<Stream> {
+    image_stream_in(old, None, px, n, w, h, compression, was_dct)
+}
+
+/// [`image_stream`], in colour space `space` if given (an indexed picture expanded to its base).
+/// CMYK is always stored with Flate: how a four-component JPEG's inks are inverted is read
+/// differently by different readers (the Adobe marker against `/Decode`).
+#[allow(clippy::too_many_arguments)]
+fn image_stream_in(
+    old: &Dict,
+    space: Option<&Object>,
+    px: &[u8],
+    n: usize,
+    w: u32,
+    h: u32,
+    compression: Compression,
+    was_dct: bool,
+) -> Option<Stream> {
     let mut d = old.clone();
+    if let Some(space) = space {
+        d.set(b"ColorSpace".to_vec(), space.clone());
+    }
     for k in [&b"Filter"[..], b"DecodeParms", b"Decode", b"Length", b"DL"] {
         d.remove(k);
     }
     d.set(b"Width".to_vec(), Object::Int(w as i64));
     d.set(b"Height".to_vec(), Object::Int(h as i64));
     d.set(b"BitsPerComponent".to_vec(), Object::Int(8));
-    let use_jpeg = match compression {
-        Compression::Jpeg(_) => true,
-        Compression::Flate => false,
-        Compression::Retain => was_dct,
-    };
+    let use_jpeg = n != 4
+        && match compression {
+            Compression::Jpeg(_) => true,
+            Compression::Flate => false,
+            Compression::Retain => was_dct,
+        };
     if use_jpeg {
         let q = match compression {
             Compression::Jpeg(q) => q,
@@ -756,10 +876,21 @@ fn is_stencil(doc: &Document, mask: &Object) -> bool {
 /// PDFPack: an image that cannot be resampled (its soft mask has a matte, a `/Decode` or is not
 /// eight-bit, so it cannot follow the image to a new size) is still recompressed at its own size,
 /// instead of being left as it was.
-fn process(doc: &Document, s: &Stream, ppi: f64, settings: &ImageSettings, n: usize, budget: &mut ImageBudget) -> Option<(Stream, Option<(ObjRef, Stream)>)> {
-    process_as_set(doc, s, ppi, settings, n, budget).or_else(|| {
+///
+/// `n` is the components of the samples processed: 1 (grey), 3 (RGB) or 4 (CMYK, resampled and
+/// stored with Flate, never JPEG). With a `palette` the picture is indexed, and is expanded to
+/// its base space, `n` components, and stored in it.
+fn process(
+    doc: &Document,
+    s: &Stream,
+    ppi: f64,
+    settings: &ImageSettings,
+    (n, palette): (usize, Option<&Palette>),
+    budget: &mut ImageBudget,
+) -> Option<(Stream, Option<(ObjRef, Stream)>)> {
+    process_as_set(doc, s, ppi, settings, (n, palette), budget).or_else(|| {
         let same_size = ImageSettings { downsample: false, ..*settings };
-        settings.downsample.then(|| process_as_set(doc, s, ppi, &same_size, n, budget)).flatten()
+        settings.downsample.then(|| process_as_set(doc, s, ppi, &same_size, (n, palette), budget)).flatten()
     })
 }
 
@@ -768,14 +899,20 @@ fn process_as_set(
     s: &Stream,
     ppi: f64,
     settings: &ImageSettings,
-    n: usize,
+    (n, palette): (usize, Option<&Palette>),
     budget: &mut ImageBudget,
 ) -> Option<(Stream, Option<(ObjRef, Stream)>)> {
     let d = &s.dict;
+    // An indexed picture's decode array is applied as it is expanded.
+    let inverted = match (palette, d.get(b"Decode")) {
+        (Some(_), Some(a)) => index_decode(doc, a)?,
+        _ => false,
+    };
+    let identity = |a: &Object| palette.is_some() || is_identity_decode(doc, a, n);
     // A colour-key mask names sample values, which resampling and JPEG would change. A stencil mask
     // is an image of its own, with its own resolution (ISO 32000-2 §8.9.6.3): the picture can change
     // under it and its edges stay as they are.
-    if d.get(b"Decode").is_some_and(|a| !is_identity_decode(doc, a, n))
+    if d.get(b"Decode").is_some_and(|a| !identity(a))
         || d.get(b"Mask").is_some_and(|m| !is_stencil(doc, m))
         || d.name(b"ImageMask").is_some()
         || matches!(d.get(b"ImageMask"), Some(Object::Bool(true)))
@@ -786,12 +923,20 @@ fn process_as_set(
         return None;
     }
     let was_dct = is_dct(s)?;
+    // A CMYK JPEG's inks may be stored inverted, which readers tell apart differently, and an
+    // indexed JPEG isn't one: both stay as they are.
+    if was_dct && (n == 4 || palette.is_some()) {
+        return None;
+    }
     let (w, h) = (u32::try_from(d.int(b"Width")?).ok()?, u32::try_from(d.int(b"Height")?).ok()?);
     if w == 0 || h == 0 || (w as u64) * (h as u64) > MAX_PIXELS {
         return None;
     }
     let resize = settings.downsample && ppi.is_finite() && ppi > settings.above_ppi && settings.target_ppi > 0.0 && settings.target_ppi.is_finite();
-    let recompress = matches!(settings.compression, Compression::Jpeg(_)) || (matches!(settings.compression, Compression::Flate) && was_dct);
+    // CMYK is stored with Flate again, which at the same size gains nothing.
+    let recompress = n != 4
+        && (matches!(settings.compression, Compression::Jpeg(_))
+            || (matches!(settings.compression, Compression::Flate) && (was_dct || palette.is_some())));
     let (nw, nh) = if resize {
         // Downsampling never enlarges: a target above the image's own resolution (or a hostile
         // settings value) must not size a buffer from the setting.
@@ -809,9 +954,12 @@ fn process_as_set(
     if !resize && (w as u64) * (h as u64) < 64 * 64 {
         return None;
     }
-    let px = pixels(doc, s, n, budget)?;
+    let px = match palette {
+        Some(p) => p.expand(&pixels(doc, s, 1, budget)?, n, inverted)?,
+        None => pixels(doc, s, n, budget)?,
+    };
     let px = if (nw, nh) != (w, h) { resample(&px, n, w, h, nw, nh)? } else { px };
-    let new = image_stream(d, &px, n, nw, nh, settings.compression, was_dct)?;
+    let new = image_stream_in(d, palette.map(|p| &p.base), &px, n, nw, nh, settings.compression, was_dct)?;
     // A soft mask must keep the image's dimensions: resample it with the image (lossless).
     let mut smask = None;
     if let Some(mr) = d.reference(b"SMask") {
@@ -1740,8 +1888,12 @@ fn decide(doc: &Document, r: ObjRef, ppi: f64, defaults: bool, settings: &Settin
         let bits = bits.filter(|_| shares(&new.dict));
         return Decision::Replace { image: r, before: s.raw.len(), new, resampled, smask: None, bits };
     }
-    let n = s.dict.get(b"ColorSpace").and_then(|cs| components(doc, cs));
-    let processed = n.and_then(|n| process(doc, s, ppi, if n == 1 { &settings.gray } else { &settings.color }, n, budget));
+    let space = s.dict.get(b"ColorSpace").and_then(|cs| match components(doc, cs) {
+        Some(n) => Some((n, None)),
+        None => other_space(doc, cs, budget),
+    });
+    let processed =
+        space.and_then(|(n, palette)| process(doc, s, ppi, if n == 1 { &settings.gray } else { &settings.color }, (n, palette.as_ref()), budget));
     // A dithered scan, say, downsampled and JPEG-compressed: the smaller wins, counting a soft
     // mask resampled with it.
     let smask_len = |smask: Option<&(ObjRef, Stream)>| match smask {
@@ -2436,7 +2588,7 @@ mod dimension_tests {
         with_mask.dict.set(b"SMask".to_vec(), Object::Ref(masked));
         let spent = |s: &Stream| {
             let mut budget = ImageBudget::with_work(u64::MAX);
-            process(&doc, s, 720.0, &Settings::default().gray, 1, &mut budget).expect("resampled, and smaller");
+            process(&doc, s, 720.0, &Settings::default().gray, (1, None), &mut budget).expect("resampled, and smaller");
             u64::MAX - budget.work_left()
         };
         assert_eq!(spent(&with_mask), spent(&image("DeviceGray")) + cost);
