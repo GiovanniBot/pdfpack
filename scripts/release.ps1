@@ -8,7 +8,8 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 $version = (Select-String -Path apps/pdfpack/Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
 $tag = "v$version"
 if (git status --porcelain) { throw "Há mudanças sem commit: faça o commit antes de publicar." }
-if (gh release view $tag 2>$null) { throw "A release $tag já existe: aumente a versão em apps/pdfpack/Cargo.toml." }
+gh release view $tag *> $null
+if ($LASTEXITCODE -eq 0) { throw "A release $tag já existe: aumente a versão em apps/pdfpack/Cargo.toml." }
 
 cargo build --release -p pdfpack
 if ($LASTEXITCODE -ne 0) { throw "A compilação falhou." }
