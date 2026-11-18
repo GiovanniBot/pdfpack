@@ -360,11 +360,13 @@ pub struct Prefs {
     /// Se as atualizações se instalam sozinhas. `None` até a primeira atualização chegar, quando
     /// o aplicativo pergunta.
     pub auto_update: Option<bool>,
+    /// Se a pergunta "Instalar o PDFPack?" já foi respondida, para não repetir a cada abertura.
+    pub install_asked: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { email_limit_mb: 25.0, level: Level::Media, auto_update: None }
+        Self { email_limit_mb: 25.0, level: Level::Media, auto_update: None, install_asked: false }
     }
 }
 

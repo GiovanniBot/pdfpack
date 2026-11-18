@@ -6,6 +6,7 @@
 
 mod core;
 mod icons;
+mod install;
 mod list;
 mod modals;
 mod render;
@@ -22,11 +23,23 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use state::{Doc, Msg, Prefs, Progress, Snapshot, Sort};
 
 fn main() -> eframe::Result {
-    if std::env::args().nth(1).as_deref() == Some("--version") {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let flag = |name: &str| args.iter().any(|a| a == name);
+    if flag("--version") {
         // `println!` entraria em pânico se quem chamou já fechou a saída.
-        let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("{}
-", update::VERSION).as_bytes());
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("{}\n", update::VERSION).as_bytes());
         return Ok(());
+    }
+    // Instalar e desinstalar sem a janela: é o que "Aplicativos instalados" do Windows chama, e
+    // serve para quem distribui o PDFPack por script.
+    if flag("--install") {
+        std::process::exit(match install::install(!flag("--no-desktop")) {
+            Ok(_) => 0,
+            Err(_) => 1,
+        });
+    }
+    if flag("--uninstall") {
+        std::process::exit(uninstall_from_command_line(flag("--quiet")));
     }
     update::clean_up();
     let options = eframe::NativeOptions {
@@ -41,8 +54,40 @@ fn main() -> eframe::Result {
     eframe::run_native("PDFPack", options, Box::new(|cc| Ok(Box::new(App::new(&cc.egui_ctx)))))
 }
 
+/// `--uninstall`: confirma (a não ser com `--quiet`) e desinstala. Devolve o código de saída.
+fn uninstall_from_command_line(quiet: bool) -> i32 {
+    let tell = |text: &str| {
+        if !quiet {
+            rfd::MessageDialog::new().set_title("PDFPack").set_description(text).set_buttons(rfd::MessageButtons::Ok).show();
+        }
+    };
+    if !quiet {
+        let answer = rfd::MessageDialog::new()
+            .set_title("PDFPack")
+            .set_description("Desinstalar o PDFPack deste computador?\n\nOs atalhos, o programa e as preferências são removidos. Seus PDFs não são tocados.")
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show();
+        if answer != rfd::MessageDialogResult::Yes {
+            return 0;
+        }
+    }
+    match install::uninstall() {
+        Ok(()) => {
+            tell("O PDFPack foi desinstalado.");
+            0
+        }
+        Err(e) => {
+            tell(&e);
+            1
+        }
+    }
+}
+
 pub enum Modal {
     None,
+    /// Na primeira abertura fora da pasta de instalação; `desktop` é a caixa do atalho.
+    InstallOffer { desktop: bool },
+    UninstallConfirm,
     CompressSetup,
     Compressing(Arc<Progress>),
     CompressDone { before: u64, after: u64, count: usize, failed: Vec<(String, String)> },
@@ -131,6 +176,10 @@ impl App {
             pending_update: None,
             silent_update: false,
         };
+        // Quem abriu o arquivo baixado é perguntado, uma vez, se quer instalar.
+        if !cfg!(debug_assertions) && !app.prefs.install_asked && !install::is_installed() {
+            app.modal = Modal::InstallOffer { desktop: true };
+        }
         // Versões de desenvolvimento não se atualizam sozinhas.
         if !cfg!(debug_assertions) {
             state::spawn_update_check(false, app.tx.clone(), ctx.clone());
@@ -426,6 +475,35 @@ impl App {
         let progress = Arc::new(Progress::default());
         state::spawn_update(release, progress.clone(), self.tx.clone(), ctx.clone());
         self.modal = Modal::Updating(progress);
+    }
+
+    /// A resposta à pergunta de instalação não se repete, qualquer que tenha sido.
+    pub fn install_later(&mut self) {
+        self.prefs.install_asked = true;
+        self.prefs.save();
+        self.modal = Modal::None;
+    }
+
+    /// Instala e, se não há nada aberto para perder, reabre já pela cópia instalada.
+    pub fn install(&mut self, desktop: bool, ctx: &egui::Context) {
+        self.prefs.install_asked = true;
+        self.prefs.save();
+        self.modal = Modal::None;
+        match install::install(desktop) {
+            Ok(exe) if self.state.docs.is_empty() && self.loading == 0 => match install::launch(&exe) {
+                Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                Err(_) => self.say("PDFPack instalado · abra pelo atalho da próxima vez".into(), ctx),
+            },
+            Ok(_) => self.say("PDFPack instalado · abra pelo atalho da próxima vez".into(), ctx),
+            Err(e) => self.modal = Modal::Message { title: "Não foi possível instalar".into(), lines: vec![e] },
+        }
+    }
+
+    pub fn uninstall(&mut self, ctx: &egui::Context) {
+        match install::uninstall() {
+            Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Err(e) => self.modal = Modal::Message { title: "Não foi possível desinstalar".into(), lines: vec![e] },
+        }
     }
 
     pub fn restart(&mut self, ctx: &egui::Context) {

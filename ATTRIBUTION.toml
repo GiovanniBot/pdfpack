@@ -2,6 +2,17 @@
 # ATTRIBUTION.md is generated from this file: `cargo xtask assets --write`. Checked by `cargo xtask assets` (part of `xtask ci`).
 #
 # [[asset]]
+path = "apps/pdfpack/screenshots/instalar.png"
+title = "Captura de tela do PDFPack: pergunta de instalação"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide e a fonte Inter"
+sha256 = "40880cfbe1af79c5d9e21db25554cf36638ea9989067b8f1353a524f8e60ab31"
+
+[[asset]]
 path = "apps/pdfpack/assets/banner.png"
 title = "PDFPack: banner do README (canguru e nome)"
 author = "Giovanni Almeida (fornecido pelo autor do PDFPack)"

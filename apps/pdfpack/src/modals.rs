@@ -17,6 +17,9 @@ enum Next {
     Organize,
     Update,
     Restart,
+    Install,
+    InstallLater,
+    Uninstall,
 }
 
 /// Uma opção de escolha única, com título e explicação.
@@ -166,12 +169,43 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let frame = egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0, BORDER)).corner_radius(18).inner_margin(24).shadow(shadow);
     let mut next = Next::Stay;
     let mut pick_always = None;
+    let mut toggle_desktop = false;
     let first_update = app.prefs.auto_update.is_none();
     let response = egui::Modal::new(egui::Id::unique("pdfpack-modal")).frame(frame).backdrop_color(Color32::from_black_alpha(165)).show(ctx, |ui| {
         ui.set_width(450.0);
         ui.spacing_mut().item_spacing.y = 7.0;
         match &app.modal {
             Modal::None => {}
+            Modal::InstallOffer { desktop } => {
+                heading(ui, Icon::Monitor, ACCENT, "Instalar o PDFPack?", "Para abrir pelo menu Iniciar, sem procurar o arquivo");
+                muted(ui, "O PDFPack é copiado para a sua pasta de programas e passa a aparecer no menu Iniciar. Não pede senha de administrador e continua se atualizando sozinho.");
+                ui.add_space(4.0);
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), Sense::click());
+                let hover = ui.ctx().animate_bool_with_time(resp.id.with("hover"), resp.hovered(), 0.08);
+                ui.painter().rect(rect, 11, theme::mix(CARD, CARD_HOVER, hover), Stroke::new(1.0, BORDER), StrokeKind::Inside);
+                crate::list::checkbox(ui, Rect::from_center_size(pos2(rect.min.x + 22.0, rect.center().y), vec2(18.0, 18.0)), *desktop, resp.hovered(), 1.0);
+                ui.painter().text(pos2(rect.min.x + 44.0, rect.center().y), Align2::LEFT_CENTER, "Criar atalho na área de trabalho", theme::semibold(14.0), TEXT);
+                if resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                toggle_desktop = resp.clicked();
+                let (go, later) = buttons(ui, Some((Icon::Check, "Instalar")), Some("Agora não"));
+                if go {
+                    next = Next::Install;
+                } else if later {
+                    next = Next::InstallLater;
+                }
+            }
+            Modal::UninstallConfirm => {
+                heading(ui, Icon::Trash, DANGER, "Desinstalar o PDFPack?", "O aplicativo fecha em seguida");
+                muted(ui, "Os atalhos, o programa e as preferências são removidos deste computador. Seus PDFs não são tocados; o que não foi salvo na lista atual se perde.");
+                let (go, cancel) = buttons(ui, Some((Icon::Trash, "Desinstalar")), Some("Cancelar"));
+                if go {
+                    next = Next::Uninstall;
+                } else if cancel {
+                    next = Next::Close;
+                }
+            }
             Modal::CompressSetup => {
                 let docs = &app.state.docs;
                 let chosen: Vec<_> = docs.iter().filter(|d| d.checked).collect();
@@ -365,8 +399,15 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     if let (Some(pick), Modal::UpdateOffer { always, .. }) = (pick_always, &mut app.modal) {
         *always = pick;
     }
+    if let (true, Modal::InstallOffer { desktop }) = (toggle_desktop, &mut app.modal) {
+        *desktop = !*desktop;
+    }
+    // Fechar a pergunta de instalação conta como "agora não": ela não volta a cada abertura.
+    if response.should_close() && matches!(app.modal, Modal::InstallOffer { .. }) && matches!(next, Next::Stay) {
+        next = Next::InstallLater;
+    }
     // Esc ou um clique fora fecham os diálogos que não estão trabalhando.
-    let idle = matches!(app.modal, Modal::CompressSetup | Modal::OrganizeSetup | Modal::CompressDone { .. } | Modal::Message { .. } | Modal::UpdateOffer { .. } | Modal::UpdateDone { .. });
+    let idle = matches!(app.modal, Modal::CompressSetup | Modal::OrganizeSetup | Modal::CompressDone { .. } | Modal::Message { .. } | Modal::UpdateOffer { .. } | Modal::UpdateDone { .. } | Modal::UninstallConfirm);
     if response.should_close() && idle {
         next = Next::Close;
     }
@@ -382,6 +423,16 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     match next {
         Next::Stay => {}
         Next::Close => app.modal = Modal::None,
+        Next::InstallLater => app.install_later(),
+        Next::Install => {
+            if let Modal::InstallOffer { desktop } = app.modal {
+                app.install(desktop, ctx);
+            }
+        }
+        Next::Uninstall => {
+            app.modal = Modal::None;
+            app.uninstall(ctx);
+        }
         Next::Compress => app.start_compress(ctx),
         Next::Organize => app.start_organize(ctx),
         Next::Update => {

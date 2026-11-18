@@ -39,11 +39,23 @@ sozinho.
 As duas coisas são independentes. Se você só precisa de PDFs mais leves, comprima, salve e pronto:
 organizar para email é opcional.
 
-## Como baixar e abrir
+## Como baixar e instalar
 
 1. Clique em **[Baixar o PDFPack](https://github.com/GiovanniBot/pdfpack/releases/latest/download/pdfpack.exe)**.
-2. Guarde o arquivo `pdfpack.exe` em uma pasta sua, como **Documentos** ou a **Área de Trabalho**.
-3. Dê dois cliques nele. Não há instalação.
+2. Dê dois cliques no arquivo `pdfpack.exe` que foi baixado.
+3. Na primeira vez, o PDFPack pergunta se você quer instalá-lo. Deixe marcada a opção
+   **Criar atalho na área de trabalho** se quiser o ícone lá, e clique em **Instalar**.
+
+<p align="center"><img src="apps/pdfpack/screenshots/instalar.png" width="760" alt="Pergunta de instalação, com a opção de criar atalho na área de trabalho"></p>
+
+Pronto: o PDFPack reabre já instalado e passa a aparecer no **menu Iniciar**. O arquivo baixado
+pode ser apagado. A instalação não pede senha de administrador.
+
+Se preferir não instalar, clique em **Agora não**: o PDFPack funciona normalmente direto do
+arquivo baixado. Dá para instalar depois pelo botão **ⓘ**, no canto superior direito.
+
+Para remover, use **Desinstalar o PDFPack** no mesmo botão **ⓘ**, ou a lista de aplicativos
+instalados do Windows.
 
 > Na primeira vez, o Windows pode mostrar o aviso azul "O Windows protegeu o computador". Isso
 > acontece com programas novos que ainda não têm assinatura digital. Clique em **Mais informações**
@@ -167,7 +179,7 @@ O PDFPack é um aplicativo nativo em **Rust**, com interface em [egui](https://g
 otimizador de imagens, a extração de páginas e o renderizador. Tudo o que o PDFCraft tem além
 disso (edição, formulários, OCR, assinatura…) ficou de fora.
 
-É um único executável, sem instalador, sem serviço e sem dependências em tempo de execução.
+É um único executável, sem serviço e sem dependências em tempo de execução. Ele mesmo se instala.
 
 ```
 apps/pdfpack/        o aplicativo
@@ -176,6 +188,7 @@ apps/pdfpack/        o aplicativo
   src/state.rs       documentos, tarefas em segundo plano, gravação e preferências
   src/render.rs      fila de renderização de páginas e miniaturas
   src/update.rs      atualização automática
+  src/install.rs     instalação e desinstalação
   src/list.rs        barra superior e lista de PDFs e emails
   src/viewer.rs      visualizador e minimapa
   src/modals.rs      diálogos
@@ -245,9 +258,41 @@ foram organizados. Um arquivo de origem nunca é sobrescrito: se o destino for o
 a cópia sai como `<nome> (comprimido).pdf`. Partes de um PDF dividido se chamam
 `<nome> (parte 1 de 3).pdf`.
 
+## Instalação
+
+Não há instalador separado: [`install.rs`](apps/pdfpack/src/install.rs) faz o próprio executável
+se instalar, só para o usuário atual, sem elevação.
+
+- Copia o executável para `%LOCALAPPDATA%\Programs\PDFPack\pdfpack.exe`. A pasta continua
+  gravável pelo usuário, que é o que a atualização automática precisa.
+- Cria `PDFPack.lnk` no menu Iniciar e, se pedido, na área de trabalho.
+- Registra a entrada em `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\PDFPack`,
+  para aparecer nos aplicativos instalados do Windows.
+
+A pergunta aparece uma vez, na primeira abertura de um executável que não está na pasta de
+instalação; a resposta fica em `install_asked` nas preferências.
+
+A desinstalação remove os atalhos (só os que apontam para o executável instalado), a entrada do
+registro, o executável e as preferências. Como um executável aberto não pode ser apagado, a
+remoção roda logo depois que o aplicativo fecha. Ela apaga arquivos pelo nome, nunca uma pasta
+com o que houver dentro.
+
+Os atalhos e o registro são criados por um script do PowerShell, que recebe os caminhos por
+variáveis de ambiente. Em uma máquina que bloqueie objetos COM no PowerShell, a cópia acontece
+mas os atalhos não são criados, e o aplicativo avisa.
+
+Para distribuir por script, sem a janela:
+
+```
+pdfpack.exe --install               instala, com atalho na área de trabalho
+pdfpack.exe --install --no-desktop  instala, sem o atalho na área de trabalho
+pdfpack.exe --uninstall             desinstala, pedindo confirmação
+pdfpack.exe --uninstall --quiet     desinstala sem perguntar
+```
+
 ## Atualização automática
 
-Implementada em [`update.rs`](apps/pdfpack/src/update.rs), sem instalador nem serviço:
+Implementada em [`update.rs`](apps/pdfpack/src/update.rs), sem serviço em segundo plano:
 
 1. Ao abrir, o aplicativo consulta `releases/latest` deste repositório na API do GitHub.
 2. Se a tag for mais nova que a versão compilada e a release tiver o anexo `pdfpack.exe`, ele
@@ -278,7 +323,8 @@ Ficam em `%APPDATA%\PDFPack\preferencias.json`:
 {
   "email_limit_mb": 25.0,
   "level": "Media",
-  "auto_update": true
+  "auto_update": true,
+  "install_asked": true
 }
 ```
 

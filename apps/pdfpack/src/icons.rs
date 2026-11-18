@@ -46,6 +46,8 @@ icons! {
     Sparkles => "../../../assets/icons/sparkles.svg",
     Refresh => "../../../assets/icons/rotate-cw.svg",
     Info => "../../../assets/icons/info.svg",
+    Monitor => "../../../assets/icons/monitor.svg",
+    Trash => "../../../assets/icons/trash-2.svg",
 }
 
 impl Icon {

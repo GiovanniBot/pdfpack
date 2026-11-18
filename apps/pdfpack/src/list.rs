@@ -68,6 +68,19 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
                     app.check_updates(&ctx);
                     ui.close();
                 }
+                // Instalado, oferece desinstalar; rodando do arquivo baixado, oferece instalar.
+                let installed = crate::install::is_installed();
+                let (icon, text) = if installed { (Icon::Trash, "Desinstalar o PDFPack") } else { (Icon::Monitor, "Instalar neste computador") };
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
+                if resp.hovered() {
+                    ui.painter().rect_filled(rect, 7, CARD_HOVER);
+                }
+                icon.paint(ui, pos2(rect.min.x + 14.0, rect.center().y), 15.0, MUTED);
+                ui.painter().text(pos2(rect.min.x + 30.0, rect.center().y), Align2::LEFT_CENTER, text, theme::regular(13.5), TEXT);
+                if resp.clicked() {
+                    app.modal = if installed { Modal::UninstallConfirm } else { Modal::InstallOffer { desktop: true } };
+                    ui.close();
+                }
             });
             if theme::icon_button(ui, Icon::Redo, Kind::Ghost, app.can_redo()).on_hover_text("Refazer (Ctrl+Shift+Z)").clicked() {
                 app.redo();
@@ -170,7 +183,7 @@ pub fn elided_name(ui: &Ui, text: &str, font: egui::FontId, color: Color32, widt
     elided(ui, &format!("{}…{tail}", head.trim_end()), font, color, width)
 }
 
-fn checkbox(ui: &Ui, rect: Rect, checked: bool, hovered: bool, alpha: f32) {
+pub(crate) fn checkbox(ui: &Ui, rect: Rect, checked: bool, hovered: bool, alpha: f32) {
     let p = ui.painter();
     if checked {
         p.rect_filled(rect, 5, ACCENT.gamma_multiply(alpha));
