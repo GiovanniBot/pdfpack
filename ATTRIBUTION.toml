@@ -1,7 +1,117 @@
 # ATTRIBUTION.toml: one entry per asset (AGENTS.md §1). The source of truth for provenance and licences.
 # ATTRIBUTION.md is generated from this file: `cargo xtask assets --write`. Checked by `cargo xtask assets` (part of `xtask ci`).
 #
-# [[asset]]    a file in this repository (committed or vendored); `sha256` must match the file.
+# [[asset]]
+path = "apps/pdfpack/screenshots/inicio.png"
+title = "Captura de tela do PDFPack: tela inicial"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "72d9dfa0ce2525510599a89530068e756a0f85e4ce188dc6121f12cf8a3db8fa"
+
+[[asset]]
+path = "apps/pdfpack/screenshots/lista.png"
+title = "Captura de tela do PDFPack: lista, visualizador e minimapa"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "8035425d503302700da5edee750ad615a72a36e895cfbe7a0e279489aca3dfd3"
+
+[[asset]]
+path = "apps/pdfpack/screenshots/comprimir.png"
+title = "Captura de tela do PDFPack: níveis de compressão"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "b653c386aca823c507978dc428cdba0f67e6710060d04b572a2257564e9d0f46"
+
+[[asset]]
+path = "apps/pdfpack/screenshots/resultado.png"
+title = "Captura de tela do PDFPack: resultado da compressão"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "1c472b64331c78b3a0555c38891a980effd4aa1a684871601e48e75321926ffe"
+
+[[asset]]
+path = "apps/pdfpack/screenshots/limite.png"
+title = "Captura de tela do PDFPack: tamanho máximo por email"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "b08e6f64d17774f6ad94756ccd2ad71e0b5eba269ef98dc214e1f8b4098c9e42"
+
+[[asset]]
+path = "apps/pdfpack/screenshots/emails.png"
+title = "Captura de tela do PDFPack: PDFs organizados em pastas de email"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "5330d55ff8c675725975ac456821a1692a99b76fa9582deb81269ed7011f887e"
+
+[[asset]]
+path = "apps/pdfpack/screenshots/atualizacao.png"
+title = "Captura de tela do PDFPack: pergunta sobre atualizações"
+author = "Giovanni Almeida (captura do próprio aplicativo)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "image"
+usage = "README. Mostra só a interface do PDFPack, ícones Lucide, a fonte Inter e PDFs fictícios desenhados para a demonstração"
+sha256 = "f7ac8a7a3559a51bfb9d3b8f96f2a955917ec6d2138a4e5834082de7d0c7ed33"
+
+[[asset]]
+path = "apps/pdfpack/assets/logo.png"
+title = "PDFPack logo (canguru), 512 px"
+author = "Giovanni Almeida (fornecido pelo autor do PDFPack)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "logo"
+usage = "README do PDFPack"
+sha256 = "fee374b53e398dd213aadc37988b479e02238f931adeb32b0855e4d83009b016"
+
+[[asset]]
+path = "apps/pdfpack/assets/icon.png"
+title = "PDFPack logo (canguru), 256 px"
+author = "Giovanni Almeida (fornecido pelo autor do PDFPack)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "logo"
+usage = "Ícone da janela e da tela inicial do PDFPack, embutido no executável"
+sha256 = "bd64598a7bd42be893ae3713114aaf1fc1746989ef1abc729a07755818e161a7"
+
+[[asset]]
+path = "apps/pdfpack/assets/pdfpack.ico"
+title = "PDFPack logo (canguru), ícone do Windows"
+author = "Giovanni Almeida (fornecido pelo autor do PDFPack)"
+source = "this repository"
+licence = "MIT OR Apache-2.0"
+licence_file = "LICENSE-MIT"
+kind = "logo"
+usage = "Ícone do executável do PDFPack"
+sha256 = "b3602cb74f5cd4b5cd0c966f2e324721cb1289a985c044f6d074941d236823b8"
+
+[[asset]]    a file in this repository (committed or vendored); `sha256` must match the file.
 # [[bundled]]  a file compiled into PdfCraft by a Cargo dependency (its crate version must match Cargo.lock).
 # [[fetched]]  downloaded at build time by xtask (never committed), pinned by `sha256`.
 # [[build_input]] an optional build input outside this repository (craft-fonts via CRAFT_FONTS_DIR, craft-i18n via CRAFT_I18N_DIR);

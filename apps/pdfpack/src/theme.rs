@@ -151,7 +151,28 @@ pub fn chevron(painter: &egui::Painter, center: Pos2, open: f32, color: Color32)
 }
 
 /// O ícone da janela: um quadrado amarelo arredondado com uma folha dobrada.
+/// O logo do PDFPack (o canguru), já com os cantos arredondados.
+const LOGO: &[u8] = include_bytes!("../assets/icon.png");
+
 pub fn icon() -> egui::IconData {
+    // O PNG vem embutido e é válido; se um dia não for, o ícone desenhado assume.
+    eframe::icon_data::from_png_bytes(LOGO).unwrap_or_else(|_| drawn_icon())
+}
+
+/// O logo como textura, criada na primeira vez que é pedida.
+pub fn logo(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::unique("pdfpack-logo");
+    if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        return texture;
+    }
+    let icon = icon();
+    let image = egui::ColorImage::from_rgba_unmultiplied([icon.width as usize, icon.height as usize], &icon.rgba);
+    let texture = ctx.load_texture("pdfpack-logo", image, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+    texture
+}
+
+fn drawn_icon() -> egui::IconData {
     const N: usize = 64;
     let mut rgba = vec![0u8; N * N * 4];
     let inside = |x: f32, y: f32, r: Rect, radius: f32| {

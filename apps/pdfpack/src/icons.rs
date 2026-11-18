@@ -34,7 +34,6 @@ icons! {
     Sort => "../../../assets/icons/arrow-up-down.svg",
     File => "../../../assets/icons/file-text.svg",
     Files => "../../../assets/icons/files.svg",
-    FilePlus => "../../../assets/icons/file-plus.svg",
     FolderOpen => "../../../assets/icons/folder-open.svg",
     ZoomIn => "../../../assets/icons/zoom-in.svg",
     ZoomOut => "../../../assets/icons/zoom-out.svg",

@@ -97,15 +97,16 @@ pub fn empty(app: &mut App, ui: &mut Ui) {
     let rect = ui.available_rect_before_wrap();
     let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
     let glow = ctx.animate_bool_with_time(egui::Id::unique("drop-glow"), hovering, 0.15);
-    let zone = Rect::from_center_size(rect.center(), vec2(540.0_f32.min(rect.width() - 40.0), 330.0));
+    let zone = Rect::from_center_size(rect.center(), vec2(540.0_f32.min(rect.width() - 40.0), 348.0));
     ui.painter().rect_filled(zone, 20, theme::mix(PANEL, ACCENT.gamma_multiply(0.10), glow));
     ui.painter().extend(Shape::dashed_line(&rounded_outline(zone, 20.0), Stroke::new(1.5, theme::mix(BORDER.gamma_multiply(1.5), ACCENT, glow)), 7.0, 6.0));
 
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(zone.shrink(30.0)).layout(Layout::top_down(Align::Center)));
     child.add_space(14.0);
-    let (slot, _) = child.allocate_exact_size(vec2(64.0, 64.0), Sense::hover());
-    theme::tile(&child, slot.center(), 64.0, Icon::FilePlus, ACCENT);
-    child.add_space(12.0);
+    let (slot, _) = child.allocate_exact_size(vec2(84.0, 84.0), Sense::hover());
+    let logo = theme::logo(&ctx);
+    child.painter().image(logo.id(), slot, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+    child.add_space(10.0);
     child.label(RichText::new(if hovering { "Solte para adicionar" } else { "Comprima e organize PDFs para email" }).font(theme::semibold(19.0)));
     child.label(RichText::new("Arraste os PDFs para cá ou selecione os arquivos.").color(MUTED).size(13.5));
     child.add_space(14.0);
