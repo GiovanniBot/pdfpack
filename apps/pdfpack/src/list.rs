@@ -26,7 +26,10 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
         ui.spacing_mut().item_spacing.x = 8.0;
         // Três ações independentes: quem só quer comprimir não precisa organizar. O amarelo cheio
         // vai de Comprimir para Salvar assim que há o que salvar; organizar fica sempre opcional.
-        if theme::button(ui, Some(if compressed { Icon::Done } else { Icon::Compress }), "Comprimir", kind(!compressed && !organized), has_docs).on_hover_text("Reduz o tamanho dos PDFs marcados").clicked() {
+        if theme::button(ui, Some(if compressed { Icon::Done } else { Icon::Compress }), "Comprimir", kind(!compressed && !organized), has_docs)
+            .on_hover_text("Reduz o tamanho dos PDFs marcados")
+            .clicked()
+        {
             app.modal = Modal::CompressSetup;
         }
         if theme::button(ui, Some(if organized { Icon::Done } else { Icon::Mail }), "Organizar para email", Kind::Outline, has_docs)
@@ -36,16 +39,23 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
             app.limit_text = app.prefs.email_limit_mb;
             app.modal = Modal::OrganizeSetup;
         }
-        if theme::button(ui, Some(Icon::Save), "Salvar", kind(compressed || organized), has_docs).on_hover_text("Salva tudo em uma pasta (Ctrl+S)").clicked() {
+        if theme::button(ui, Some(Icon::Save), "Salvar", kind(compressed || organized), has_docs)
+            .on_hover_text("Salva tudo em uma pasta (Ctrl+S)")
+            .clicked()
+        {
             app.start_save(&ctx);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             let about = theme::icon_button(ui, Icon::Info, Kind::Ghost, true).on_hover_text(format!("PDFPack {}", crate::update::VERSION));
             egui::Popup::menu(&about).show(|ui| {
-                ui.set_min_width(250.0);
+                ui.set_width(250.0);
                 ui.label(RichText::new(format!("PDFPack {}", crate::update::VERSION)).font(theme::semibold(14.0)));
                 ui.label(RichText::new("Feito sobre o motor do PDFCraft").color(MUTED).size(12.0));
+                // Atualização e instalação próprias só existem no Windows.
+                if !cfg!(windows) {
+                    return;
+                }
                 ui.add_space(4.0);
                 let auto = app.prefs.auto_update == Some(true);
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
@@ -94,8 +104,14 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
 
 /// O contorno de um retângulo arredondado, para a borda tracejada da área de soltar.
 fn rounded_outline(rect: Rect, r: f32) -> Vec<Pos2> {
-    let corners = [(rect.right_top() + vec2(-r, r), -90.0_f32), (rect.right_bottom() + vec2(-r, -r), 0.0), (rect.left_bottom() + vec2(r, -r), 90.0), (rect.left_top() + vec2(r, r), 180.0)];
-    let mut points: Vec<Pos2> = corners.iter().flat_map(|(c, start)| (0..=8).map(move |i| *c + r * egui::Vec2::angled((start + i as f32 * 11.25).to_radians()))).collect();
+    let corners = [
+        (rect.right_top() + vec2(-r, r), -90.0_f32),
+        (rect.right_bottom() + vec2(-r, -r), 0.0),
+        (rect.left_bottom() + vec2(r, -r), 90.0),
+        (rect.left_top() + vec2(r, r), 180.0),
+    ];
+    let mut points: Vec<Pos2> =
+        corners.iter().flat_map(|(c, start)| (0..=8).map(move |i| *c + r * egui::Vec2::angled((start + i as f32 * 11.25).to_radians()))).collect();
     points.push(points[0]);
     points
 }
@@ -107,7 +123,12 @@ pub fn empty(app: &mut App, ui: &mut Ui) {
     let glow = ctx.animate_bool_with_time(egui::Id::unique("drop-glow"), hovering, 0.15);
     let zone = Rect::from_center_size(rect.center(), vec2(540.0_f32.min(rect.width() - 40.0), 348.0));
     ui.painter().rect_filled(zone, 20, theme::mix(PANEL, ACCENT.gamma_multiply(0.10), glow));
-    ui.painter().extend(Shape::dashed_line(&rounded_outline(zone, 20.0), Stroke::new(1.5, theme::mix(BORDER.gamma_multiply(1.5), ACCENT, glow)), 7.0, 6.0));
+    ui.painter().extend(Shape::dashed_line(
+        &rounded_outline(zone, 20.0),
+        Stroke::new(1.5, theme::mix(BORDER.gamma_multiply(1.5), ACCENT, glow)),
+        7.0,
+        6.0,
+    ));
 
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(zone.shrink(30.0)).layout(Layout::top_down(Align::Center)));
     child.add_space(14.0);
@@ -206,7 +227,10 @@ fn header(app: &App, ui: &mut Ui, actions: &mut Vec<Action>) {
         }
         ui.label(RichText::new("PDFs").font(theme::semibold(14.5)));
         let label = if checked == n { n.to_string() } else { format!("{checked} de {n}") };
-        let (slot, _) = ui.allocate_exact_size(vec2(ui.painter().layout_no_wrap(label.clone(), theme::semibold(11.5), MUTED).size().x + 14.0, 20.0), Sense::hover());
+        let (slot, _) = ui.allocate_exact_size(
+            vec2(ui.painter().layout_no_wrap(label.clone(), theme::semibold(11.5), MUTED).size().x + 14.0, 20.0),
+            Sense::hover(),
+        );
         theme::pill(ui.painter(), slot.right_center(), &label, MUTED, CARD);
         if app.loading > 0 {
             ui.spinner();
@@ -218,7 +242,8 @@ fn header(app: &App, ui: &mut Ui, actions: &mut Vec<Action>) {
             }
             let sort = theme::icon_button(ui, Icon::Sort, Kind::Ghost, true).on_hover_text(format!("Ordenar · {}", app.state.sort.name()));
             egui::Popup::menu(&sort).show(|ui| {
-                ui.set_min_width(170.0);
+                // Largura fixa: as linhas ocupam a largura disponível, que num menu é a da janela.
+                ui.set_width(190.0);
                 ui.label(RichText::new("Ordenar por").color(MUTED).size(12.0));
                 for (sort, icon) in Sort::MENU.into_iter().zip([Icon::Hash, Icon::Type, Icon::Gauge, Icon::Clock]) {
                     let on = app.state.sort == sort;
@@ -227,7 +252,13 @@ fn header(app: &App, ui: &mut Ui, actions: &mut Vec<Action>) {
                         ui.painter().rect_filled(rect, 7, CARD_HOVER);
                     }
                     icon.paint(ui, pos2(rect.min.x + 14.0, rect.center().y), 15.0, if on { ACCENT } else { MUTED });
-                    ui.painter().text(pos2(rect.min.x + 30.0, rect.center().y), Align2::LEFT_CENTER, sort.name(), theme::regular(13.5), if on { ACCENT } else { TEXT });
+                    ui.painter().text(
+                        pos2(rect.min.x + 30.0, rect.center().y),
+                        Align2::LEFT_CENTER,
+                        sort.name(),
+                        theme::regular(13.5),
+                        if on { ACCENT } else { TEXT },
+                    );
                     if on {
                         Icon::Check.paint(ui, pos2(rect.max.x - 12.0, rect.center().y), 14.0, ACCENT);
                     }
@@ -266,7 +297,11 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
     let mut actions: Vec<Action> = Vec::new();
     header(app, ui, &mut actions);
     ui.add_space(2.0);
-    egui::Panel::bottom("summary").frame(egui::Frame::new().inner_margin(egui::Margin { left: 0, right: 0, top: 8, bottom: 0 })).show_separator_line(false).resizable(false).show(ui, |ui| summary(app, ui));
+    egui::Panel::bottom("summary")
+        .frame(egui::Frame::new().inner_margin(egui::Margin { left: 0, right: 0, top: 8, bottom: 0 }))
+        .show_separator_line(false)
+        .resizable(false)
+        .show(ui, |ui| summary(app, ui));
 
     let n = app.state.docs.len();
     let now = ui.input(|i| i.time);
@@ -312,14 +347,31 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                     let a = |c: Color32| c.gamma_multiply(appear);
                     let mid = rect.min.y + HEADER / 2.0;
                     theme::chevron(&p, pos2(rect.min.x + 14.0, mid), open, a(if resp.hovered() { TEXT } else { MUTED }));
-                    p.rect_filled(Rect::from_center_size(pos2(rect.min.x + 40.0, mid), vec2(28.0, 28.0)), 8, a(if over { DANGER } else { ACCENT }).gamma_multiply(0.16));
+                    p.rect_filled(
+                        Rect::from_center_size(pos2(rect.min.x + 40.0, mid), vec2(28.0, 28.0)),
+                        8,
+                        a(if over { DANGER } else { ACCENT }).gamma_multiply(0.16),
+                    );
                     if appear > 0.9 {
                         Icon::Mail.paint(ui, pos2(rect.min.x + 40.0, mid), 15.0, if over { DANGER } else { ACCENT });
                     }
-                    let title = p.text(pos2(rect.min.x + 62.0, mid - 8.0), Align2::LEFT_CENTER, format!("Email {}", e + 1), theme::semibold(14.0), a(TEXT));
-                    p.text(pos2(title.max.x + 7.0, mid - 7.5), Align2::LEFT_CENTER, plural(docs.len(), "PDF", "PDFs"), theme::regular(11.5), a(MUTED));
+                    let title =
+                        p.text(pos2(rect.min.x + 62.0, mid - 8.0), Align2::LEFT_CENTER, format!("Email {}", e + 1), theme::semibold(14.0), a(TEXT));
+                    p.text(
+                        pos2(title.max.x + 7.0, mid - 7.5),
+                        Align2::LEFT_CENTER,
+                        plural(docs.len(), "PDF", "PDFs"),
+                        theme::regular(11.5),
+                        a(MUTED),
+                    );
                     let total = format!("{} de {}", human_size(size), human_size(limit));
-                    p.text(pos2(rect.max.x - 12.0, mid - 8.0), Align2::RIGHT_CENTER, total, theme::regular(11.5), a(if over { DANGER } else { MUTED }));
+                    p.text(
+                        pos2(rect.max.x - 12.0, mid - 8.0),
+                        Align2::RIGHT_CENTER,
+                        total,
+                        theme::regular(11.5),
+                        a(if over { DANGER } else { MUTED }),
+                    );
                     // Quanto do limite o email ocupa.
                     let bar = Rect::from_min_max(pos2(rect.min.x + 62.0, mid + 7.0), pos2(rect.max.x - 12.0, mid + 11.0));
                     p.rect_filled(bar, 2, a(BORDER));
@@ -329,7 +381,10 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 if resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
-                if resp.on_hover_text(if over { "Passa do limite: uma única página é maior que o email" } else { "Clique para abrir ou fechar" }).clicked() {
+                if resp
+                    .on_hover_text(if over { "Passa do limite: uma única página é maior que o email" } else { "Clique para abrir ou fechar" })
+                    .clicked()
+                {
                     actions.push(Action::Fold(*e));
                 }
             }
@@ -369,7 +424,11 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                     p.rect_stroke(rect, 10, Stroke::new(1.0, fade(MUTED).gamma_multiply(0.7)), StrokeKind::Inside);
                 }
                 if selected {
-                    p.rect_filled(Rect::from_min_max(pos2(rect.min.x, rect.min.y + 13.0), pos2(rect.min.x + 3.0, rect.max.y - 13.0)), CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 }, fade(ACCENT));
+                    p.rect_filled(
+                        Rect::from_min_max(pos2(rect.min.x, rect.min.y + 13.0), pos2(rect.min.x + 3.0, rect.max.y - 13.0)),
+                        CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
+                        fade(ACCENT),
+                    );
                 }
 
                 let check = Rect::from_center_size(pos2(rect.min.x + 20.0, rect.center().y), vec2(17.0, 17.0));
@@ -385,7 +444,13 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 let hovered = whole && ui.rect_contains_pointer(rect) && app.drag.is_none();
                 let mut right = rect.max.x - 34.0;
                 if doc.compressed && !hovered {
-                    let badge = theme::pill(&p, pos2(rect.max.x - 10.0, rect.center().y), &format!("−{}%", doc.saved_percent()), fade(ACCENT), fade(ACCENT).gamma_multiply(0.14));
+                    let badge = theme::pill(
+                        &p,
+                        pos2(rect.max.x - 10.0, rect.center().y),
+                        &format!("−{}%", doc.saved_percent()),
+                        fade(ACCENT),
+                        fade(ACCENT).gamma_multiply(0.14),
+                    );
                     right = badge.min.x - 8.0;
                 } else if doc.compressed {
                     right = rect.max.x - 56.0;
@@ -425,7 +490,16 @@ pub fn panel(app: &mut App, ui: &mut Ui) {
                 // O cartão do email, pintado por trás do que acabou de ser desenhado.
                 let (pad, _) = ui.allocate_exact_size(vec2(width, 1.0 * appear), Sense::hover());
                 let frame = Rect::from_min_max(pos2(left, top), pos2(left + width, pad.max.y));
-                ui.painter().set(card, egui::epaint::RectShape::new(frame, 14, BG.gamma_multiply(appear), Stroke::new(1.0, BORDER.gamma_multiply(appear)), StrokeKind::Inside));
+                ui.painter().set(
+                    card,
+                    egui::epaint::RectShape::new(
+                        frame,
+                        14,
+                        BG.gamma_multiply(appear),
+                        Stroke::new(1.0, BORDER.gamma_multiply(appear)),
+                        StrokeKind::Inside,
+                    ),
+                );
                 ui.add_space(8.0 * appear);
             }
         }

@@ -100,7 +100,8 @@ fn work(shared: &Arc<(Mutex<Queue>, Condvar)>, tx: &Sender<Rendered>, ctx: &egui
             open = Some((id, PageRenderer::new(job.bytes.clone(), RenderConfig::default().on_screen())));
         }
         let image = open.as_mut().and_then(|(_, r)| {
-            let page = r.render(RenderRequest { page: job.key.page, scale: job.scale, preview: job.key.kind == Kind::Thumb, ..RenderRequest::default() });
+            let page =
+                r.render(RenderRequest { page: job.key.page, scale: job.scale, preview: job.key.kind == Kind::Thumb, ..RenderRequest::default() });
             if page.error.is_some() || page.width == 0 || page.height == 0 {
                 return None;
             }

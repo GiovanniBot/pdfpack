@@ -139,7 +139,8 @@ fn comparison(ui: &mut Ui, before: u64, after: u64) {
             ui.painter().text(slot.left_center(), Align2::LEFT_CENTER, label, theme::regular(12.5), MUTED);
             let width = ui.available_width() - 78.0;
             let (track, _) = ui.allocate_exact_size(vec2(width, 18.0), Sense::hover());
-            let fill = Rect::from_min_size(pos2(track.min.x, track.center().y - 5.0), vec2((width * size as f32 / before.max(1) as f32).max(6.0), 10.0));
+            let fill =
+                Rect::from_min_size(pos2(track.min.x, track.center().y - 5.0), vec2((width * size as f32 / before.max(1) as f32).max(6.0), 10.0));
             ui.painter().rect_filled(fill, 5, color);
             let (num, _) = ui.allocate_exact_size(vec2(70.0, 18.0), Sense::hover());
             ui.painter().text(num.right_center(), Align2::RIGHT_CENTER, human_size(size), theme::semibold(12.5), text);
@@ -171,7 +172,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let mut pick_always = None;
     let mut toggle_desktop = false;
     let first_update = app.prefs.auto_update.is_none();
-    let response = egui::Modal::new(egui::Id::unique("pdfpack-modal")).frame(frame).backdrop_color(Color32::from_black_alpha(165)).show(ctx, |ui| {
+    // Cada diálogo tem a sua identidade: com uma só, o seguinte herdava a altura do anterior e
+    // ficava com um vazio no meio.
+    let response = egui::Modal::new(egui::Id::unique(("pdfpack-modal", std::mem::discriminant(&app.modal)))).frame(frame).backdrop_color(Color32::from_black_alpha(165)).show(ctx, |ui| {
         ui.set_width(450.0);
         ui.spacing_mut().item_spacing.y = 7.0;
         match &app.modal {
@@ -407,7 +410,16 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         next = Next::InstallLater;
     }
     // Esc ou um clique fora fecham os diálogos que não estão trabalhando.
-    let idle = matches!(app.modal, Modal::CompressSetup | Modal::OrganizeSetup | Modal::CompressDone { .. } | Modal::Message { .. } | Modal::UpdateOffer { .. } | Modal::UpdateDone { .. } | Modal::UninstallConfirm);
+    let idle = matches!(
+        app.modal,
+        Modal::CompressSetup
+            | Modal::OrganizeSetup
+            | Modal::CompressDone { .. }
+            | Modal::Message { .. }
+            | Modal::UpdateOffer { .. }
+            | Modal::UpdateDone { .. }
+            | Modal::UninstallConfirm
+    );
     if response.should_close() && idle {
         next = Next::Close;
     }

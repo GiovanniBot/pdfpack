@@ -31,7 +31,9 @@ pub fn regular(size: f32) -> FontId {
 pub fn install(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert("inter".into(), Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/Inter-Regular.ttf"))));
-    fonts.font_data.insert("inter-semibold".into(), Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf"))));
+    fonts
+        .font_data
+        .insert("inter-semibold".into(), Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf"))));
     let fallback = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "inter".into());
     let mut semi = vec!["inter-semibold".to_owned()];
@@ -65,7 +67,7 @@ pub fn install(ctx: &egui::Context) {
         style.spacing.item_spacing = vec2(8.0, 8.0);
         style.spacing.button_padding = vec2(14.0, 7.0);
         style.spacing.scroll.bar_width = 8.0;
-        for (_, font) in style.text_styles.iter_mut() {
+        for font in style.text_styles.values_mut() {
             font.size = (font.size * 1.08).round();
         }
     });
@@ -185,7 +187,7 @@ fn drawn_icon() -> egui::IconData {
     for y in 0..N {
         for x in 0..N {
             let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            let fold = fx - 45.0 + fy - 13.0 < -9.0 + 18.0 && fx > 36.0 && fy < 22.0 && (fx - 36.0) > (22.0 - fy) * -1.0 && fx - 36.0 + (22.0 - fy) > 9.0;
+            let fold = fx - 45.0 + fy - 13.0 < -9.0 + 18.0 && fx > 36.0 && fy < 22.0 && (fx - 36.0) > -(22.0 - fy) && fx - 36.0 + (22.0 - fy) > 9.0;
             let lines = [30.0, 36.0, 42.0].iter().any(|ly| (fy - ly).abs() < 1.4 && fx > 24.0 && fx < 40.0);
             let c = if !inside(fx, fy, tile, 13.0) {
                 [0, 0, 0, 0]

@@ -64,7 +64,9 @@ fn uninstall_from_command_line(quiet: bool) -> i32 {
     if !quiet {
         let answer = rfd::MessageDialog::new()
             .set_title("PDFPack")
-            .set_description("Desinstalar o PDFPack deste computador?\n\nOs atalhos, o programa e as preferências são removidos. Seus PDFs não são tocados.")
+            .set_description(
+                "Desinstalar o PDFPack deste computador?\n\nOs atalhos, o programa e as preferências são removidos. Seus PDFs não são tocados.",
+            )
             .set_buttons(rfd::MessageButtons::YesNo)
             .show();
         if answer != rfd::MessageDialogResult::Yes {
@@ -83,22 +85,42 @@ fn uninstall_from_command_line(quiet: bool) -> i32 {
     }
 }
 
+/// Instalar-se e atualizar-se sozinho só valem no Windows, e não em versões de desenvolvimento: a
+/// release publica apenas o executável do Windows, e baixá-lo por cima de um programa de outro
+/// sistema o estragaria.
+pub const SELF_MANAGED: bool = cfg!(windows) && !cfg!(debug_assertions);
+
 pub enum Modal {
     None,
     /// Na primeira abertura fora da pasta de instalação; `desktop` é a caixa do atalho.
-    InstallOffer { desktop: bool },
+    InstallOffer {
+        desktop: bool,
+    },
     UninstallConfirm,
     CompressSetup,
     Compressing(Arc<Progress>),
-    CompressDone { before: u64, after: u64, count: usize, failed: Vec<(String, String)> },
+    CompressDone {
+        before: u64,
+        after: u64,
+        count: usize,
+        failed: Vec<(String, String)>,
+    },
     OrganizeSetup,
     Organizing(Arc<Progress>),
     Saving(Arc<Progress>),
-    Message { title: String, lines: Vec<String> },
+    Message {
+        title: String,
+        lines: Vec<String>,
+    },
     /// Uma versão nova chegou; `always` é a escolha marcada (atualizar sozinho daqui para frente).
-    UpdateOffer { release: update::Release, always: bool },
+    UpdateOffer {
+        release: update::Release,
+        always: bool,
+    },
     Updating(Arc<Progress>),
-    UpdateDone { version: String },
+    UpdateDone {
+        version: String,
+    },
 }
 
 pub enum ToastAction {
@@ -177,11 +199,11 @@ impl App {
             silent_update: false,
         };
         // Quem abriu o arquivo baixado é perguntado, uma vez, se quer instalar.
-        if !cfg!(debug_assertions) && !app.prefs.install_asked && !install::is_installed() {
+        if SELF_MANAGED && !app.prefs.install_asked && !install::is_installed() {
             app.modal = Modal::InstallOffer { desktop: true };
         }
         // Versões de desenvolvimento não se atualizam sozinhas.
-        if !cfg!(debug_assertions) {
+        if SELF_MANAGED {
             state::spawn_update_check(false, app.tx.clone(), ctx.clone());
         }
         // PDFs passados na linha de comando ("Abrir com", ou soltos sobre o executável).
@@ -448,6 +470,9 @@ impl App {
     }
 
     pub fn check_updates(&mut self, ctx: &egui::Context) {
+        if !cfg!(windows) {
+            return self.say("As atualizações automáticas só existem no Windows".into(), ctx);
+        }
         state::spawn_update_check(true, self.tx.clone(), ctx.clone());
     }
 
@@ -579,8 +604,18 @@ impl eframe::App for App {
             egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::BG)).show(ui, |ui| list::empty(self, ui));
         } else {
             let side = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::same(10));
-            let left = egui::Panel::left("list").frame(side).default_size(340.0).size_range(280.0..=520.0).show_separator_line(false).show(ui, |ui| list::panel(self, ui));
-            let right = egui::Panel::right("minimap").frame(side).exact_size(160.0).resizable(false).show_separator_line(false).show(ui, |ui| viewer::minimap(self, ui));
+            let left = egui::Panel::left("list")
+                .frame(side)
+                .default_size(340.0)
+                .size_range(280.0..=520.0)
+                .show_separator_line(false)
+                .show(ui, |ui| list::panel(self, ui));
+            let right = egui::Panel::right("minimap")
+                .frame(side)
+                .exact_size(160.0)
+                .resizable(false)
+                .show_separator_line(false)
+                .show(ui, |ui| viewer::minimap(self, ui));
             egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::VIEWER)).show(ui, |ui| viewer::pages(self, ui));
             ui.painter().vline(left.response.rect.max.x - 0.5, left.response.rect.y_range(), line);
             ui.painter().vline(right.response.rect.min.x + 0.5, right.response.rect.y_range(), line);

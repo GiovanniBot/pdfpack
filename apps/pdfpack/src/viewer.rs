@@ -2,12 +2,12 @@
 
 use egui::{Align2, Color32, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
-use crate::{App, ToastAction};
 use crate::core::human_size;
 use crate::icons::Icon;
 use crate::list::elided_name;
 use crate::render::{Job, Key, Kind};
 use crate::theme::{self, ACCENT, BORDER, CARD, GOOD, MUTED, PANEL, TEXT};
+use crate::{App, ToastAction};
 
 const PAD: f32 = 22.0;
 const GAP: f32 = 14.0;
@@ -19,9 +19,11 @@ fn best_texture(app: &App, exact: Key) -> (Option<egui::TextureId>, bool) {
     if let Some(t) = app.textures.get(&exact) {
         return (Some(t.id()), true);
     }
-    let other = app.textures.iter().filter(|(k, _)| k.doc == exact.doc && k.version == exact.version && k.page == exact.page).max_by_key(|(k, _)| match k.kind {
-        Kind::Page(w) => w,
-        Kind::Thumb => 0,
+    let other = app.textures.iter().filter(|(k, _)| k.doc == exact.doc && k.version == exact.version && k.page == exact.page).max_by_key(|(k, _)| {
+        match k.kind {
+            Kind::Page(w) => w,
+            Kind::Thumb => 0,
+        }
     });
     (other.map(|(_, t)| t.id()), false)
 }
@@ -155,10 +157,22 @@ pub fn minimap(app: &mut App, ui: &mut Ui) {
             if resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
-            let stroke = if current { Stroke::new(2.0, ACCENT) } else if resp.hovered() { Stroke::new(1.5, MUTED) } else { Stroke::new(1.0, BORDER) };
+            let stroke = if current {
+                Stroke::new(2.0, ACCENT)
+            } else if resp.hovered() {
+                Stroke::new(1.5, MUTED)
+            } else {
+                Stroke::new(1.0, BORDER)
+            };
             painter.rect_stroke(rect.expand(1.0), 3, stroke, StrokeKind::Outside);
             let font = if current { theme::semibold(12.0) } else { theme::regular(12.0) };
-            painter.text(pos2(slot.center().x, rect.max.y + 11.0), Align2::CENTER_CENTER, (i + 1).to_string(), font, if current { ACCENT } else { MUTED });
+            painter.text(
+                pos2(slot.center().x, rect.max.y + 11.0),
+                Align2::CENTER_CENTER,
+                (i + 1).to_string(),
+                font,
+                if current { ACCENT } else { MUTED },
+            );
         }
     });
     app.wanted.append(&mut jobs);
@@ -173,8 +187,12 @@ pub fn evict(app: &mut App) {
     };
     let current = app.current_page;
     // As páginas que já têm a imagem do tamanho pedido: delas, as outras ampliações podem sair.
-    let ready: std::collections::HashSet<usize> =
-        app.desired.iter().filter(|(page, px)| app.textures.contains_key(&Key { doc: id, version, page: **page, kind: Kind::Page(**px) })).map(|(page, _)| *page).collect();
+    let ready: std::collections::HashSet<usize> = app
+        .desired
+        .iter()
+        .filter(|(page, px)| app.textures.contains_key(&Key { doc: id, version, page: **page, kind: Kind::Page(**px) }))
+        .map(|(page, _)| *page)
+        .collect();
     let desired = &app.desired;
     app.textures.retain(|k, _| {
         if k.doc != id || k.version != version || k.page >= count {
@@ -192,30 +210,44 @@ pub fn evict(app: &mut App) {
 fn controls(app: &mut App, ui: &mut Ui, area: Rect) {
     let ctx = ui.ctx().clone();
     let shadow = egui::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(110) };
-    let frame = egui::Frame::new().fill(CARD).stroke(Stroke::new(1.0, BORDER)).corner_radius(20).inner_margin(egui::Margin::symmetric(6, 4)).shadow(shadow);
-    egui::Area::new(egui::Id::unique("zoom")).order(egui::Order::Middle).pivot(Align2::CENTER_BOTTOM).fixed_pos(pos2(area.center().x, area.max.y - 16.0)).show(&ctx, |ui| {
-        frame.show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                if theme::icon_button(ui, Icon::ZoomOut, theme::Kind::Ghost, app.zoom > 0.31).on_hover_text("Reduzir").clicked() {
-                    app.zoom = (app.zoom / 1.2).max(0.3);
-                }
-                let (rect, resp) = ui.allocate_exact_size(vec2(52.0, 32.0), Sense::click());
-                ui.painter().text(rect.center(), Align2::CENTER_CENTER, format!("{:.0}%", app.zoom * 100.0), theme::semibold(12.5), if resp.hovered() { ACCENT } else { TEXT });
-                if resp.on_hover_text("Voltar a 100%").clicked() {
-                    app.zoom = 1.0;
-                }
-                if theme::icon_button(ui, Icon::ZoomIn, theme::Kind::Ghost, app.zoom < 3.99).on_hover_text("Ampliar (Ctrl + roda do mouse)").clicked() {
-                    app.zoom = (app.zoom * 1.2).min(4.0);
-                }
-                let (line, _) = ui.allocate_exact_size(vec2(9.0, 32.0), Sense::hover());
-                ui.painter().vline(line.center().x, line.y_range().shrink(8.0), Stroke::new(1.0, BORDER));
-                if theme::icon_button(ui, Icon::Fit, theme::Kind::Ghost, true).on_hover_text("Ajustar à largura").clicked() {
-                    app.zoom = 1.0;
-                }
+    let frame =
+        egui::Frame::new().fill(CARD).stroke(Stroke::new(1.0, BORDER)).corner_radius(20).inner_margin(egui::Margin::symmetric(6, 4)).shadow(shadow);
+    egui::Area::new(egui::Id::unique("zoom"))
+        .order(egui::Order::Middle)
+        .pivot(Align2::CENTER_BOTTOM)
+        .fixed_pos(pos2(area.center().x, area.max.y - 16.0))
+        .show(&ctx, |ui| {
+            frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    if theme::icon_button(ui, Icon::ZoomOut, theme::Kind::Ghost, app.zoom > 0.31).on_hover_text("Reduzir").clicked() {
+                        app.zoom = (app.zoom / 1.2).max(0.3);
+                    }
+                    let (rect, resp) = ui.allocate_exact_size(vec2(52.0, 32.0), Sense::click());
+                    ui.painter().text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        format!("{:.0}%", app.zoom * 100.0),
+                        theme::semibold(12.5),
+                        if resp.hovered() { ACCENT } else { TEXT },
+                    );
+                    if resp.on_hover_text("Voltar a 100%").clicked() {
+                        app.zoom = 1.0;
+                    }
+                    if theme::icon_button(ui, Icon::ZoomIn, theme::Kind::Ghost, app.zoom < 3.99)
+                        .on_hover_text("Ampliar (Ctrl + roda do mouse)")
+                        .clicked()
+                    {
+                        app.zoom = (app.zoom * 1.2).min(4.0);
+                    }
+                    let (line, _) = ui.allocate_exact_size(vec2(9.0, 32.0), Sense::hover());
+                    ui.painter().vline(line.center().x, line.y_range().shrink(8.0), Stroke::new(1.0, BORDER));
+                    if theme::icon_button(ui, Icon::Fit, theme::Kind::Ghost, true).on_hover_text("Ajustar à largura").clicked() {
+                        app.zoom = 1.0;
+                    }
+                });
             });
         });
-    });
 
     toast(app, &ctx, pos2(area.center().x, area.max.y - 72.0));
 }
@@ -229,7 +261,8 @@ pub fn toast(app: &mut App, ctx: &egui::Context, anchor: egui::Pos2) {
         return;
     }
     let shadow = egui::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(110) };
-    let frame = egui::Frame::new().fill(CARD).stroke(Stroke::new(1.0, BORDER)).corner_radius(20).inner_margin(egui::Margin::symmetric(14, 6)).shadow(shadow);
+    let frame =
+        egui::Frame::new().fill(CARD).stroke(Stroke::new(1.0, BORDER)).corner_radius(20).inner_margin(egui::Margin::symmetric(14, 6)).shadow(shadow);
     // Some aos poucos no último meio segundo.
     let alpha = ((toast.until - now) as f32 / 0.5).clamp(0.0, 1.0);
     let mut clicked = false;

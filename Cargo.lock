@@ -2391,7 +2391,7 @@ version = "0.21.1"
 
 [[package]]
 name = "pdfpack"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "eframe",
  "egui",

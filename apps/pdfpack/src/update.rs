@@ -55,7 +55,8 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 /// A release mais nova, se for mais nova que esta e tiver o executável anexado.
 pub fn check() -> Result<Option<Release>, String> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let mut response = ureq::get(&url).header("User-Agent", AGENT).header("Accept", "application/vnd.github+json").call().map_err(|e| e.to_string())?;
+    let mut response =
+        ureq::get(&url).header("User-Agent", AGENT).header("Accept", "application/vnd.github+json").call().map_err(|e| e.to_string())?;
     let text = response.body_mut().read_to_string().map_err(|e| e.to_string())?;
     let api: ApiRelease = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     if !is_newer(&api.tag_name, VERSION) {
@@ -81,10 +82,22 @@ fn exe() -> Result<PathBuf, String> {
 
 /// Apaga o executável antigo que a última atualização deixou ao lado do novo.
 pub fn clean_up() {
-    if let Ok(exe) = exe() {
-        let _ = std::fs::remove_file(exe.with_extension("old"));
-        let _ = std::fs::remove_file(exe.with_extension("new"));
+    let Ok(exe) = exe() else { return };
+    let _ = std::fs::remove_file(exe.with_extension("new"));
+    let old = exe.with_extension("old");
+    if std::fs::remove_file(&old).is_ok() || !old.exists() {
+        return;
     }
+    // Logo depois de "Reiniciar agora" a versão anterior ainda está fechando e o arquivo dela
+    // continua preso: tenta de novo por alguns segundos, sem atrasar a abertura.
+    std::thread::spawn(move || {
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if std::fs::remove_file(&old).is_ok() {
+                break;
+            }
+        }
+    });
 }
 
 /// Baixa `release` e troca o executável. `progress` recebe de 0 a 1 e devolve `false` para parar.

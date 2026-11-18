@@ -209,11 +209,7 @@ pub fn default_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 
 pub fn human_size(bytes: u64) -> String {
     let mb = bytes as f64 / (1024.0 * 1024.0);
-    if mb >= 1.0 {
-        format!("{mb:.1} MB").replace('.', ",")
-    } else {
-        format!("{:.0} KB", (bytes as f64 / 1024.0).max(1.0))
-    }
+    if mb >= 1.0 { format!("{mb:.1} MB").replace('.', ",") } else { format!("{:.0} KB", (bytes as f64 / 1024.0).max(1.0)) }
 }
 
 #[cfg(test)]

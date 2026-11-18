@@ -146,13 +146,25 @@ pub struct SplitDoc {
 }
 
 pub enum Msg {
-    Loaded { docs: Vec<Doc>, errors: Vec<(String, String)> },
+    Loaded {
+        docs: Vec<Doc>,
+        errors: Vec<(String, String)>,
+    },
     /// Para cada arquivo: o resultado comprimido, ou por que não deu.
-    Compressed { results: Vec<(u64, Result<Bytes, String>)>, cancelled: bool },
-    Split { limit: u64, result: Result<Vec<SplitDoc>, String> },
+    Compressed {
+        results: Vec<(u64, Result<Bytes, String>)>,
+        cancelled: bool,
+    },
+    Split {
+        limit: u64,
+        result: Result<Vec<SplitDoc>, String>,
+    },
     Saved(Result<(PathBuf, usize), String>),
     /// O resultado de procurar uma versão nova; `manual` quando foi o usuário que pediu.
-    UpdateChecked { release: Result<Option<crate::update::Release>, String>, manual: bool },
+    UpdateChecked {
+        release: Result<Option<crate::update::Release>, String>,
+        manual: bool,
+    },
     /// A versão instalada, pronta para a próxima abertura.
     Updated(Result<String, String>),
 }
@@ -225,7 +237,8 @@ pub fn spawn_compress(jobs: Vec<(u64, String, Bytes)>, level: Level, progress: A
                 ctx.request_repaint();
                 !progress.cancelled()
             };
-            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core::compress(&bytes, level, &mut tick))).unwrap_or_else(|e| Err(panic_text(e)));
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core::compress(&bytes, level, &mut tick)))
+                .unwrap_or_else(|e| Err(panic_text(e)));
             if progress.cancelled() {
                 break;
             }
@@ -406,7 +419,8 @@ pub fn spawn_update(release: crate::update::Release, progress: Arc<Progress>, tx
             ctx.request_repaint();
             !progress.cancelled()
         };
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::update::install(&release, &mut tick))).unwrap_or_else(|e| Err(panic_text(e)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::update::install(&release, &mut tick)))
+            .unwrap_or_else(|e| Err(panic_text(e)));
         let _ = tx.send(Msg::Updated(result.map(|()| release.version.clone())));
         ctx.request_repaint();
     });

@@ -145,6 +145,9 @@ valer na próxima vez que o programa abrir.
 Não. Tudo acontece no seu computador. A única coisa que o PDFPack busca na internet é a
 informação de que existe uma versão nova do próprio programa.
 
+**Funciona no macOS ou no Linux?**
+Por enquanto só no Windows 10 e 11. Veja [Compatibilidade](#compatibilidade), mais abaixo.
+
 **Que tamanho máximo devo usar?**
 Use o limite do seu provedor de email: **25 MB** no Gmail e **20 MB** no Outlook.com. O que conta
 é a conta de email, não o programa: uma conta do Gmail usada dentro do Outlook segue o limite do
@@ -349,6 +352,20 @@ cargo test -p pdfpack
 
 A consulta de atualizações só acontece em compilações de release, para não interferir no
 desenvolvimento.
+
+## Compatibilidade
+
+O PDFPack é publicado e testado só no **Windows 10 e 11 (64 bits)**.
+
+O motor de PDF e a interface (egui) são multiplataforma, então o código deve compilar no macOS e
+no Linux, mas isso **não foi compilado nem testado**, e três partes ainda são só do Windows:
+
+- **Instalação e atualização automática.** Ficam desligadas fora do Windows: não há pergunta de
+  instalação, e "Procurar atualizações" não baixa nada.
+- **Preferências.** O arquivo fica em `%APPDATA%`; sem essa variável, o limite e o nível
+  escolhidos não são lembrados entre uma abertura e outra.
+- **Distribuição.** Só há `pdfpack.exe` nas versões publicadas. Um pacote para macOS pede um
+  `.app` assinado; no Linux, os diálogos de arquivo dependem do GTK ou do portal do desktop.
 
 ## Publicar uma versão
 

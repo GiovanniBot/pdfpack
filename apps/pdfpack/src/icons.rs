@@ -56,9 +56,16 @@ impl Icon {
         static CACHE: OnceLock<Mutex<HashMap<Icon, Arc<[u8]>>>> = OnceLock::new();
         let bytes = {
             let mut cache = CACHE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
-            cache.entry(self).or_insert_with(|| self.svg().replace("currentColor", "white").replace("stroke-width=\"2\"", "stroke-width=\"1.85\"").into_bytes().into()).clone()
+            cache
+                .entry(self)
+                .or_insert_with(|| {
+                    self.svg().replace("currentColor", "white").replace("stroke-width=\"2\"", "stroke-width=\"1.85\"").into_bytes().into()
+                })
+                .clone()
         };
-        egui::Image::from_bytes(format!("bytes://pdfpack/{self:?}.svg"), egui::load::Bytes::Shared(bytes)).fit_to_exact_size(vec2(size, size)).tint(color)
+        egui::Image::from_bytes(format!("bytes://pdfpack/{self:?}.svg"), egui::load::Bytes::Shared(bytes))
+            .fit_to_exact_size(vec2(size, size))
+            .tint(color)
     }
 
     pub fn paint(self, ui: &Ui, center: Pos2, size: f32, color: Color32) {

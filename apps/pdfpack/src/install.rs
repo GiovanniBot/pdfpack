@@ -102,9 +102,15 @@ pub fn install(desktop: bool) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let to = dir.join(EXE);
     if !same(&from, &to) {
-        std::fs::copy(&from, &to).map_err(|e| format!("não foi possível copiar o PDFPack para {} ({e}). Se o PDFPack instalado estiver aberto, feche-o e tente de novo.", dir.display()))?;
+        std::fs::copy(&from, &to).map_err(|e| {
+            format!("não foi possível copiar o PDFPack para {} ({e}). Se o PDFPack instalado estiver aberto, feche-o e tente de novo.", dir.display())
+        })?;
     }
-    let vars = [("PDFPACK_EXE", to.as_os_str()), ("PDFPACK_DIR", dir.as_os_str()), ("PDFPACK_DESKTOP", std::ffi::OsStr::new(if desktop { "1" } else { "0" }))];
+    let vars = [
+        ("PDFPACK_EXE", to.as_os_str()),
+        ("PDFPACK_DIR", dir.as_os_str()),
+        ("PDFPACK_DESKTOP", std::ffi::OsStr::new(if desktop { "1" } else { "0" })),
+    ];
     let output = powershell(INSTALL, &vars).output().map_err(|e| format!("o PDFPack foi copiado, mas os atalhos não puderam ser criados ({e})"))?;
     if !output.status.success() {
         let detail = String::from_utf8_lossy(&output.stderr);
