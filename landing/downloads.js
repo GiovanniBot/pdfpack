@@ -27,20 +27,28 @@ if (system) {
 
 // Downloads open in a new tab, which the browser closes as soon as the file
 // starts, so the visitor never leaves this page even where a browser would
-// otherwise show GitHub. The dialog then confirms that the download began.
+// otherwise show GitHub. Each place confirms the download where it was
+// clicked: the main button says so on itself, and the system picker (opened
+// only from its own footer button) says so inside the dialog.
 const status = document.querySelector('#download-status');
-function started(system) {
-  const option = dialog.querySelector('[data-system="' + system + '"]');
-  if (!option) return;
-  status.textContent = 'O download do PDFPack para ' + option.querySelector('strong').textContent +
-    ' começou. Confira a pasta Downloads. Se não começar, clique no sistema abaixo.';
-  status.hidden = false;
-  dialog.querySelectorAll('[data-system]').forEach(a => a.classList.toggle('chosen', a === option));
-  if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
-}
+const heroButton = document.querySelector('#device-download');
+let heroLabel = heroButton.textContent;
+let heroTimer = 0;
 document.addEventListener('click', event => {
   const link = event.target.closest('a[data-system]');
-  if (link) setTimeout(() => started(link.dataset.system), 0);
+  if (!link) return;
+  if (link === heroButton) {
+    clearTimeout(heroTimer);
+    heroButton.textContent = 'Download iniciado ✓';
+    heroTimer = setTimeout(() => { heroButton.textContent = heroLabel; }, 4000);
+    return;
+  }
+  const option = dialog.querySelector('[data-system="' + link.dataset.system + '"]');
+  if (!option) return;
+  status.textContent = 'O download do PDFPack para ' + option.querySelector('strong').textContent +
+    ' começou. Confira a pasta Downloads.';
+  status.hidden = false;
+  dialog.querySelectorAll('[data-system]').forEach(a => a.classList.toggle('chosen', a === option));
 });
 picker.addEventListener('submit', () => {
   status.hidden = true;
