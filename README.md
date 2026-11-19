@@ -182,6 +182,12 @@ mantêm a ordem das páginas.
 
 ---
 
+## Apoie o PDFPack
+
+O PDFPack é gratuito, sem propagandas e sem limites. Qualquer contribuição ajuda a cobrir os custos e a manter o aplicativo evoluindo.
+
+No aplicativo, clique em **Doar** (o coração no alto da janela), escolha um valor e leia o QR code com o Pix do seu banco, ou copie o Pix copia e cola. A mesma doação está na [página do PDFPack](https://giovannibot.github.io/pdfpack/#doacao). É uma contribuição única: não é assinatura e não pede cadastro.
+
 # Para quem é técnico
 
 ## Visão geral
@@ -404,6 +410,10 @@ instalados baixam. O texto passado em `-Notes` aparece para o usuário no diálo
 ```
 scripts/release.ps1 -Notes "Corrige a divisão de PDFs com uma página só."
 ```
+
+## Doação
+
+Os códigos Pix são estáticos e gerados por `python scripts/doacao.py` a partir de `scripts/doacao.json` (precisa do pacote `segno`, só nessa hora). Ele escreve `apps/pdfpack/src/donate_data.rs` e `landing/doacao-dados.js`; o aplicativo e a página só mostram o que está ali, sem falar com banco nem com servidor.
 
 ## Licença e créditos
 

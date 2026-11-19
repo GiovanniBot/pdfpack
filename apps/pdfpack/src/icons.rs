@@ -48,6 +48,8 @@ icons! {
     Info => "../../../assets/icons/info.svg",
     Monitor => "../../../assets/icons/monitor.svg",
     Trash => "../../../assets/icons/trash-2.svg",
+    Copy => "../../../assets/icons/copy.svg",
+    Heart => "../icons/heart.svg",
 }
 
 impl Icon {

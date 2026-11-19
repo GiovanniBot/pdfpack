@@ -2,6 +2,8 @@
 plan/
 /target
 /dist
+# Os vídeos de apresentação são grandes: ficam fora do repositório.
+/video
 /corpus
 /log
 .DS_Store

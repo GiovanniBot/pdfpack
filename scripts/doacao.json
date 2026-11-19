@@ -1,0 +1,11 @@
+{
+  "chave": "8e60f0c5-7990-41ef-ae5e-9e2476d30b5c",
+  "nome": "Giovanni Almeida Soares",
+  "cidade": "BRASIL",
+  "txid": "PDFPACK",
+  "valores": [
+    {"nome": "Pulinho", "valor": "4.90"},
+    {"nome": "Pulo", "valor": "10.90"},
+    {"nome": "Salto", "valor": "16.90"}
+  ]
+}

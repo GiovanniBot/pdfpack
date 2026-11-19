@@ -5,6 +5,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod core;
+mod donate;
+mod donate_data;
 mod icons;
 mod install;
 mod list;
@@ -128,6 +130,11 @@ pub enum Modal {
         changed: Vec<Reshaped>,
     },
     Saving(Arc<Progress>),
+    /// A doação pelo Pix: o valor escolhido e quando o código foi copiado.
+    Donate {
+        tier: usize,
+        copied: Option<f64>,
+    },
     Message {
         title: String,
         lines: Vec<String>,

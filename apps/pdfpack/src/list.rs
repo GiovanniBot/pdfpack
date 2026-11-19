@@ -104,6 +104,13 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
             {
                 app.undo();
             }
+            ui.add_space(6.0);
+            if theme::button(ui, Some(Icon::Heart), "Doar", Kind::Ghost, true)
+                .on_hover_text("Ajude a manter o PDFPack gratuito e sem propagandas")
+                .clicked()
+            {
+                app.modal = Modal::Donate { tier: crate::donate::default_tier(), copied: None };
+            }
         });
     });
 }

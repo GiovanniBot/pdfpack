@@ -42,7 +42,7 @@ fn choice_card(ui: &mut Ui, title: &str, hint: &str, selected: bool) -> bool {
 }
 
 /// O cabeçalho de um diálogo: o ícone num quadradinho, o título e uma linha de contexto.
-fn heading(ui: &mut Ui, icon: Icon, color: Color32, title: &str, subtitle: &str) {
+pub fn heading(ui: &mut Ui, icon: Icon, color: Color32, title: &str, subtitle: &str) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         let (slot, _) = ui.allocate_exact_size(vec2(42.0, 42.0), Sense::hover());
@@ -59,12 +59,12 @@ fn heading(ui: &mut Ui, icon: Icon, color: Color32, title: &str, subtitle: &str)
     ui.add_space(10.0);
 }
 
-fn muted(ui: &mut Ui, text: impl Into<String>) {
+pub fn muted(ui: &mut Ui, text: impl Into<String>) {
     ui.label(RichText::new(text).color(MUTED).size(12.5));
 }
 
 /// Os botões no rodapé do diálogo, o principal à direita.
-fn buttons(ui: &mut Ui, primary: Option<(Icon, &str)>, secondary: Option<&str>) -> (bool, bool) {
+pub fn buttons(ui: &mut Ui, primary: Option<(Icon, &str)>, secondary: Option<&str>) -> (bool, bool) {
     let mut out = (false, false);
     ui.add_space(16.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -171,6 +171,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let mut next = Next::Stay;
     let mut pick_always = None;
     let mut toggle_desktop = false;
+    let mut donate = None;
     let first_update = app.prefs.auto_update.is_none();
     // Cada diálogo tem a sua identidade: com uma só, o seguinte herdava a altura do anterior e
     // ficava com um vazio no meio.
@@ -391,6 +392,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 }
             }
             Modal::Saving(p) => progress(ui, Icon::Save, "Salvando…", p),
+            Modal::Donate { tier, copied } => donate = Some(crate::donate::dialog(ui, *tier, *copied)),
             Modal::UpdateOffer { release, always } => {
                 heading(ui, Icon::Sparkles, ACCENT, "Nova versão disponível", &format!("PDFPack {} → {}", crate::update::VERSION, release.version));
                 if !release.notes.is_empty() {
@@ -459,6 +461,18 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     if response.should_close() && matches!(app.modal, Modal::InstallOffer { .. }) && matches!(next, Next::Stay) {
         next = Next::InstallLater;
     }
+    if let (Some(did), Modal::Donate { tier, copied }) = (donate, &mut app.modal) {
+        if let Some(pick) = did.pick {
+            *tier = pick;
+            *copied = None;
+        }
+        if did.copy {
+            *copied = Some(ctx.input(|i| i.time));
+        }
+        if did.close {
+            next = Next::Close;
+        }
+    }
     // Esc ou um clique fora fecham os diálogos que não estão trabalhando.
     let idle = matches!(
         app.modal,
@@ -467,6 +481,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             | Modal::CompressDone { .. }
             | Modal::OrganizeDone { .. }
             | Modal::Message { .. }
+            | Modal::Donate { .. }
             | Modal::UpdateOffer { .. }
             | Modal::UpdateDone { .. }
             | Modal::UninstallConfirm
@@ -479,7 +494,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         next = match app.modal {
             Modal::CompressSetup if app.state.docs.iter().any(|d| d.checked) => Next::Compress,
             Modal::OrganizeSetup => Next::Organize,
-            Modal::CompressDone { .. } | Modal::OrganizeDone { .. } | Modal::Message { .. } => Next::Close,
+            Modal::CompressDone { .. } | Modal::OrganizeDone { .. } | Modal::Message { .. } | Modal::Donate { .. } => Next::Close,
             _ => Next::Stay,
         };
     }
