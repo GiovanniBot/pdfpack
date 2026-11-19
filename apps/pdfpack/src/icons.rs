@@ -50,6 +50,7 @@ icons! {
     Trash => "../../../assets/icons/trash-2.svg",
     Copy => "../../../assets/icons/copy.svg",
     Heart => "../icons/heart.svg",
+    Eye => "../../../assets/icons/eye.svg",
 }
 
 impl Icon {

@@ -2,10 +2,13 @@
 
 use egui::{Align2, Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 
-use crate::core::human_size;
+use std::collections::{HashMap, HashSet};
+
+use crate::core::{Bytes, human_size};
 use crate::icons::Icon;
 use crate::list::elided_name;
 use crate::render::{Job, Key, Kind};
+use crate::state::Doc;
 use crate::theme::{self, ACCENT, BORDER, CARD, GOOD, MUTED, PANEL, TEXT};
 use crate::{App, ToastAction};
 
@@ -24,6 +27,26 @@ pub struct View {
     drawn: Option<Drawn>,
     /// O ponto da tela que deve ficar parado no próximo zoom (o ponteiro); sem ele, o centro.
     focus: Option<Pos2>,
+    /// O botão do meio está segurando as páginas, que andam com o ponteiro.
+    panning: bool,
+}
+
+/// O arquivo e a versão que o visualizador mostra: o comprimido, ou o original quando o olho pede.
+fn shown(app: &App, doc: &Doc) -> (Bytes, u64) {
+    if app.show_original && doc.has_original() { (doc.source.clone(), doc.source_version) } else { (doc.current.clone(), doc.version) }
+}
+
+/// As duas versões cujas imagens ficam guardadas: a que está na tela e a outra ponta do olho.
+fn versions(app: &App, doc: &Doc) -> (u64, u64) {
+    let (_, on_screen) = shown(app, doc);
+    (on_screen, if on_screen == doc.version { doc.source_version } else { doc.version })
+}
+
+/// O olho: alterna entre o original e o comprimido, quando o PDF aberto tem os dois.
+pub fn toggle_original(app: &mut App) {
+    if app.selected_doc().is_some_and(Doc::has_original) {
+        app.show_original = !app.show_original;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -97,22 +120,32 @@ fn anchored_offset(pages: &[[f32; 2]], widest: f32, avail_width: f32, old: f32, 
     vec2((x - anchor.x).max(0.0), (y - anchor.y).max(0.0))
 }
 
-/// A melhor imagem que já existe da página: a do tamanho pedido, outra ampliação, ou a miniatura.
+/// A melhor imagem que já existe da página: a do tamanho pedido; senão outra ampliação ou a
+/// miniatura da mesma versão; senão a de outra versão (a de antes de desfazer, ou a outra ponta do
+/// olho). Ela fica na tela até a certa ficar pronta, em vez de a página piscar em branco.
 fn best_texture(app: &App, exact: Key) -> (Option<egui::TextureId>, bool) {
     if let Some(t) = app.textures.get(&exact) {
         return (Some(t.id()), true);
     }
-    let other = app.textures.iter().filter(|(k, _)| k.doc == exact.doc && k.version == exact.version && k.page == exact.page).max_by_key(|(k, _)| {
-        match k.kind {
-            Kind::Page(w) => w,
-            Kind::Thumb => 0,
-        }
-    });
-    (other.map(|(_, t)| t.id()), false)
+    (stand_in(app.textures.iter().map(|(k, t)| (*k, t.id())), exact), false)
+}
+
+/// Entre as imagens que existem, a que melhor faz as vezes de `exact` enquanto ela não chega.
+fn stand_in<T>(textures: impl Iterator<Item = (Key, T)>, exact: Key) -> Option<T> {
+    let width = |k: &Key| match k.kind {
+        Kind::Page(w) => w,
+        Kind::Thumb => 0,
+    };
+    textures
+        .filter(|(k, _)| k.doc == exact.doc && k.page == exact.page)
+        .max_by_key(|(k, _)| (k.version == exact.version, k.kind == exact.kind, width(k)))
+        .map(|(_, t)| t)
 }
 
 pub fn pages(app: &mut App, ui: &mut Ui) {
     let Some(doc) = app.selected_doc().cloned() else { return };
+    let (bytes, version) = shown(app, &doc);
+    let original = version != doc.version;
     let ppp = ui.ctx().pixels_per_point();
     let zoom = ui.input(|i| i.zoom_delta());
     if zoom != 1.0 && ui.rect_contains_pointer(ui.max_rect()) {
@@ -123,11 +156,23 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
     let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
     ui.painter().rect_filled(strip, 0, PANEL);
     ui.painter().hline(strip.x_range(), strip.max.y - 0.5, Stroke::new(1.0, BORDER));
-    Icon::File.paint(ui, pos2(strip.min.x + 22.0, strip.center().y), 16.0, if doc.compressed { ACCENT } else { MUTED });
+    Icon::File.paint(ui, pos2(strip.min.x + 22.0, strip.center().y), 16.0, if doc.compressed && !original { ACCENT } else { MUTED });
     let page = format!("Página {} de {}", app.current_page + 1, doc.pages.len());
     let page = ui.painter().text(pos2(strip.max.x - 16.0, strip.center().y), Align2::RIGHT_CENTER, page, theme::regular(12.5), MUTED);
-    let size = if doc.compressed { format!("{} · −{}%", human_size(doc.size()), doc.saved_percent()) } else { human_size(doc.size()) };
-    let (fg, bg) = if doc.compressed { (ACCENT, ACCENT.gamma_multiply(0.14)) } else { (MUTED, CARD) };
+    let size = if original {
+        format!("Original · {}", human_size(doc.source.len() as u64))
+    } else if doc.compressed {
+        format!("{} · −{}%", human_size(doc.size()), doc.saved_percent())
+    } else {
+        human_size(doc.size())
+    };
+    let (fg, bg) = if original {
+        (TEXT, CARD)
+    } else if doc.compressed {
+        (ACCENT, ACCENT.gamma_multiply(0.14))
+    } else {
+        (MUTED, CARD)
+    };
     let right = theme::pill(ui.painter(), pos2(page.min.x - 14.0, strip.center().y), &size, fg, bg).min.x - 10.0;
     let name = elided_name(ui, &doc.name, theme::semibold(13.5), TEXT, right - strip.min.x - 40.0);
     ui.painter().galley(pos2(strip.min.x + 38.0, strip.center().y - name.size().y / 2.0), name, TEXT);
@@ -141,6 +186,20 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
     let bottom = tops.last().zip(doc.pages.last()).map_or(PAD, |(t, p)| t + p[1] * scale);
     let total = vec2(content_width(widest, scale, avail.width()), bottom + PAD);
 
+    // O botão do meio (a roda apertada) segura as páginas: elas andam com o ponteiro, para os lados
+    // também, como uma mão. Só começa sobre as páginas e vale até o botão ser solto.
+    let (middle_pressed, middle_down, delta) =
+        ui.input(|i| (i.pointer.button_pressed(egui::PointerButton::Middle), i.pointer.button_down(egui::PointerButton::Middle), i.pointer.delta()));
+    if middle_pressed && ui.rect_contains_pointer(avail) {
+        app.view.panning = true;
+    }
+    if !middle_down {
+        app.view.panning = false;
+    }
+    if app.view.panning {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+
     let mut area = egui::ScrollArea::both().id_salt(("viewer", doc.id)).auto_shrink(false);
     let focus = app.view.focus.take();
     if let Some(page) = app.scroll_to.take() {
@@ -150,6 +209,9 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
         // Sem isso a rolagem guardaria os mesmos pixels, que com páginas maiores caem em outra.
         let anchor = focus.filter(|p| drawn.viewport.contains(*p)).unwrap_or(drawn.viewport.center()) - drawn.viewport.min;
         area = area.scroll_offset(anchored_offset(&doc.pages, widest, avail.width(), drawn.scale, scale, drawn.offset, anchor));
+    } else if let Some(drawn) = app.view.drawn.filter(|d| app.view.panning && d.doc == doc.id && delta != Vec2::ZERO && delta.is_finite()) {
+        // A rolagem não passa das bordas: a área de rolagem limita o deslocamento.
+        area = area.scroll_offset((drawn.offset - delta).max(Vec2::ZERO));
     }
     let mut visible: Vec<Job> = Vec::new();
     let mut nearby: Vec<Job> = Vec::new();
@@ -171,7 +233,7 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
             let on_screen = top + h >= viewport.min.y && top <= viewport.max.y;
             // Larguras em degraus de 32 px: redimensionar a janela não redesenha a cada pixel.
             let px = (((w * ppp) / 32.0).ceil() * 32.0).clamp(64.0, 6000.0) as u32;
-            let key = Key { doc: doc.id, version: doc.version, page: i, kind: Kind::Page(px) };
+            let key = Key { doc: doc.id, version, page: i, kind: Kind::Page(px) };
             app.desired.insert(i, px);
             let (texture, exact) = best_texture(app, key);
             let painter = ui.painter();
@@ -181,7 +243,7 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
                 painter.image(id, rect, UV, Color32::WHITE);
             }
             if !exact && !app.failed.contains(&key) {
-                let job = Job { key, bytes: doc.current.clone(), scale: px as f32 / p[0] };
+                let job = Job { key, bytes: bytes.clone(), scale: px as f32 / p[0] };
                 if on_screen { visible.push(job) } else { nearby.push(job) }
             }
         }
@@ -197,6 +259,7 @@ pub fn pages(app: &mut App, ui: &mut Ui) {
 
 pub fn minimap(app: &mut App, ui: &mut Ui) {
     let Some(doc) = app.selected_doc().cloned() else { return };
+    let (bytes, version) = shown(app, &doc);
     let ppp = ui.ctx().pixels_per_point();
     ui.horizontal(|ui| {
         ui.add_space(4.0);
@@ -233,15 +296,15 @@ pub fn minimap(app: &mut App, ui: &mut Ui) {
             }
             shown = Some((shown.map_or(i, |s| s.0), i));
             let rect = Rect::from_min_size(pos2(slot.center().x - w / 2.0, slot.min.y + 2.0), vec2(w, h));
-            let key = Key { doc: doc.id, version: doc.version, page: i, kind: Kind::Thumb };
+            let key = Key { doc: doc.id, version, page: i, kind: Kind::Thumb };
+            let (texture, exact) = best_texture(app, key);
             let painter = ui.painter();
             painter.rect_filled(rect, 2, Color32::WHITE);
-            match app.textures.get(&key) {
-                Some(t) => {
-                    painter.image(t.id(), rect, UV, Color32::WHITE);
-                }
-                None if !app.failed.contains(&key) => jobs.push(Job { key, bytes: doc.current.clone(), scale: w * ppp / p[0] }),
-                None => {}
+            if let Some(id) = texture {
+                painter.image(id, rect, UV, Color32::WHITE);
+            }
+            if !exact && !app.failed.contains(&key) {
+                jobs.push(Job { key, bytes: bytes.clone(), scale: w * ppp / p[0] });
             }
             if resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -275,33 +338,65 @@ fn keeps_thumb(page: usize, current: usize, shown: Option<(usize, usize)>) -> bo
     page.abs_diff(current) < 200 || shown.is_some_and(|(first, last)| page.saturating_add(60) >= first && page <= last.saturating_add(60))
 }
 
-/// Solta as imagens que não servem mais: de outro PDF, de outra versão ou de páginas distantes.
+/// O que [`keep`] precisa saber do quadro que acabou de ser desenhado.
+struct Kept<'a> {
+    doc: u64,
+    /// A versão na tela e a outra ponta do olho.
+    on_screen: u64,
+    other: u64,
+    count: usize,
+    current: usize,
+    thumbs_shown: Option<(usize, usize)>,
+    /// A largura em pixels pedida para cada página perto da tela.
+    desired: &'a HashMap<usize, u32>,
+    /// As páginas que já têm, na versão da tela, a imagem do tamanho pedido / a miniatura.
+    ready_pages: HashSet<usize>,
+    ready_thumbs: HashSet<usize>,
+}
+
+/// Se a imagem `k` fica guardada. As da versão na tela seguem as regras de sempre; as da outra
+/// ponta do olho ficam no tamanho atual, para alternar sem esperar; as de qualquer outra versão (a
+/// de antes de desfazer) ficam só até a da tela ficar pronta, e é isso que evita o branco.
+fn keep(k: &Key, s: &Kept) -> bool {
+    if k.doc != s.doc || k.page >= s.count {
+        return false;
+    }
+    let near = s.desired.contains_key(&k.page);
+    match k.kind {
+        Kind::Thumb if k.version == s.on_screen || k.version == s.other => keeps_thumb(k.page, s.current, s.thumbs_shown),
+        Kind::Thumb => !s.ready_thumbs.contains(&k.page) && keeps_thumb(k.page, s.current, s.thumbs_shown),
+        Kind::Page(w) if k.version == s.on_screen => s.desired.get(&k.page).is_some_and(|px| *px == w || !s.ready_pages.contains(&k.page)),
+        Kind::Page(w) if k.version == s.other => s.desired.get(&k.page) == Some(&w),
+        Kind::Page(_) => near && !s.ready_pages.contains(&k.page),
+    }
+}
+
+/// Solta as imagens que não servem mais: de outro PDF, de versões que já não aparecem ou de
+/// páginas distantes.
 pub fn evict(app: &mut App) {
-    let Some((id, version, count)) = app.selected_doc().map(|d| (d.id, d.version, d.pages.len())) else {
+    let Some(doc) = app.selected_doc() else {
         app.textures.clear();
         app.failed.clear();
         return;
     };
-    let current = app.current_page;
-    let shown = app.thumbs_shown;
-    // As páginas que já têm a imagem do tamanho pedido: delas, as outras ampliações podem sair.
-    let ready: std::collections::HashSet<usize> = app
-        .desired
-        .iter()
-        .filter(|(page, px)| app.textures.contains_key(&Key { doc: id, version, page: **page, kind: Kind::Page(**px) }))
-        .map(|(page, _)| *page)
-        .collect();
-    let desired = &app.desired;
-    app.textures.retain(|k, _| {
-        if k.doc != id || k.version != version || k.page >= count {
-            return false;
-        }
-        match k.kind {
-            Kind::Thumb => keeps_thumb(k.page, current, shown),
-            Kind::Page(w) => desired.get(&k.page).is_some_and(|px| *px == w || !ready.contains(&k.page)),
-        }
-    });
-    app.failed.retain(|k| k.doc == id && k.version == version);
+    let (id, count) = (doc.id, doc.pages.len());
+    let (on_screen, other) = versions(app, doc);
+    let has = |page: usize, kind: Kind| app.textures.contains_key(&Key { doc: id, version: on_screen, page, kind });
+    let ready_pages = app.desired.iter().filter(|(page, px)| has(**page, Kind::Page(**px))).map(|(page, _)| *page).collect();
+    let ready_thumbs = (0..count).filter(|page| has(*page, Kind::Thumb)).collect();
+    let kept = Kept {
+        doc: id,
+        on_screen,
+        other,
+        count,
+        current: app.current_page,
+        thumbs_shown: app.thumbs_shown,
+        desired: &app.desired,
+        ready_pages,
+        ready_thumbs,
+    };
+    app.textures.retain(|k, _| keep(k, &kept));
+    app.failed.retain(|k| k.doc == id && (k.version == on_screen || k.version == other));
 }
 
 /// Os controles que flutuam sobre o visualizador: zoom embaixo, e o aviso de "salvo" acima dele.
@@ -345,6 +440,25 @@ fn controls(app: &mut App, ui: &mut Ui, area: Rect) {
                     ui.painter().vline(line.center().x, line.y_range().shrink(8.0), Stroke::new(1.0, BORDER));
                     if theme::icon_button(ui, Icon::Fit, theme::Kind::Ghost, true).on_hover_text("Ajustar à largura").clicked() {
                         set_zoom(app, 1.0, None);
+                    }
+                    let (line, _) = ui.allocate_exact_size(vec2(9.0, 32.0), Sense::hover());
+                    ui.painter().vline(line.center().x, line.y_range().shrink(8.0), Stroke::new(1.0, BORDER));
+                    let comparable = app.selected_doc().is_some_and(Doc::has_original);
+                    let on = comparable && app.show_original;
+                    let hint = if !comparable {
+                        "Comparar com o original: comprima este PDF primeiro".to_owned()
+                    } else if on {
+                        "Mostrando o original · clique para ver o comprimido (\\)".to_owned()
+                    } else {
+                        "Ver o original, para comparar com o comprimido (\\)".to_owned()
+                    };
+                    let kind = if on { theme::Kind::Outline } else { theme::Kind::Ghost };
+                    if theme::icon_button(ui, Icon::Eye, kind, comparable)
+                        .on_hover_text(hint)
+                        .on_disabled_hover_text("Comparar com o original: comprima este PDF primeiro")
+                        .clicked()
+                    {
+                        toggle_original(app);
                     }
                 });
             });
@@ -454,6 +568,51 @@ mod tests {
         // Sem páginas não há o que manter no lugar na vertical, e nada quebra.
         let empty = anchored_offset(&[], 612.0, 900.0, 1.0, 2.0, offset, Vec2::ZERO);
         assert!(empty.x.is_finite() && empty.y == offset.y, "{empty:?}");
+    }
+
+    fn key(version: u64, page: usize, kind: Kind) -> Key {
+        Key { doc: 7, version, page, kind }
+    }
+
+    #[test]
+    fn a_page_waiting_for_its_image_shows_the_one_from_before_undo_instead_of_white() {
+        // Depois de desfazer, a versão 1 volta à tela; só existem as imagens da versão 2.
+        let old = [(key(2, 0, Kind::Page(640)), "antes"), (key(2, 0, Kind::Thumb), "miniatura antes")];
+        assert_eq!(stand_in(old.into_iter(), key(1, 0, Kind::Page(640))), Some("antes"));
+        assert_eq!(stand_in(old.into_iter(), key(1, 0, Kind::Thumb)), Some("miniatura antes"));
+        // A mesma versão, mesmo borrada, vale mais que outra versão nítida.
+        let both = [(key(2, 0, Kind::Page(640)), "outra versão"), (key(1, 0, Kind::Thumb), "miniatura certa")];
+        assert_eq!(stand_in(both.into_iter(), key(1, 0, Kind::Page(640))), Some("miniatura certa"));
+        // Nunca a de outra página ou de outro PDF.
+        let elsewhere = [(key(1, 1, Kind::Page(640)), "página 2"), (Key { doc: 8, ..key(1, 0, Kind::Page(640)) }, "outro PDF")];
+        assert_eq!(stand_in(elsewhere.into_iter(), key(1, 0, Kind::Page(640))), None);
+    }
+
+    #[test]
+    fn old_images_leave_once_the_new_ones_are_ready_and_the_eye_keeps_both_sides() {
+        let desired = HashMap::from([(0, 640), (1, 640)]);
+        let kept = |ready: &[usize]| Kept {
+            doc: 7,
+            on_screen: 1,
+            other: 3,
+            count: 2,
+            current: 0,
+            thumbs_shown: Some((0, 1)),
+            desired: &desired,
+            ready_pages: ready.iter().copied().collect(),
+            ready_thumbs: ready.iter().copied().collect(),
+        };
+        // A versão 2 (de antes de desfazer) fica enquanto a página 0 da tela não está pronta.
+        assert!(keep(&key(2, 0, Kind::Page(640)), &kept(&[])));
+        assert!(keep(&key(2, 0, Kind::Thumb), &kept(&[])));
+        assert!(!keep(&key(2, 0, Kind::Page(640)), &kept(&[0])));
+        assert!(!keep(&key(2, 0, Kind::Thumb), &kept(&[0])));
+        // A outra ponta do olho fica no tamanho atual, pronta para alternar; outras ampliações não.
+        assert!(keep(&key(3, 1, Kind::Page(640)), &kept(&[0, 1])));
+        assert!(!keep(&key(3, 1, Kind::Page(320)), &kept(&[0, 1])));
+        assert!(keep(&key(3, 1, Kind::Thumb), &kept(&[0, 1])));
+        // Páginas que o documento já não tem saem.
+        assert!(!keep(&key(1, 5, Kind::Thumb), &kept(&[])));
     }
 
     #[test]

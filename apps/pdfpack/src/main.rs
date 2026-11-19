@@ -184,6 +184,8 @@ pub struct App {
     /// A largura em pixels pedida para cada página perto da tela.
     pub desired: HashMap<usize, u32>,
     pub zoom: f32,
+    /// O olho do visualizador: mostra o PDF como foi aberto, para comparar com o comprimido.
+    pub show_original: bool,
     pub view: viewer::View,
     pub current_page: usize,
     pub scroll_to: Option<usize>,
@@ -228,6 +230,7 @@ impl App {
             thumbs_shown: None,
             desired: HashMap::new(),
             zoom: 1.0,
+            show_original: false,
             view: viewer::View::default(),
             current_page: 0,
             scroll_to: None,
@@ -541,6 +544,8 @@ impl App {
                     return;
                 }
                 self.checkpoint();
+                // O resultado novo aparece na tela, não o original de uma comparação anterior.
+                self.show_original = false;
                 let (mut before, mut after, mut count, mut failed) = (0, 0, 0, Vec::new());
                 for (id, result) in results {
                     let Some(doc) = self.state.docs.iter_mut().find(|d| d.id == id) else { continue };
@@ -706,6 +711,11 @@ impl App {
             }
             if pressed(Modifiers::COMMAND, Key::Minus) {
                 viewer::set_zoom(self, self.zoom / viewer::ZOOM_STEP, None);
+            }
+            // A barra invertida alterna entre o original e o comprimido, como o antes e depois dos
+            // editores de imagem.
+            if pressed(Modifiers::NONE, Key::Backslash) {
+                viewer::toggle_original(self);
             }
         }
         if pressed(Modifiers::NONE, Key::Delete) {

@@ -103,6 +103,9 @@ a porcentagem que diminuiu.
 
 <p align="center"><img src="apps/pdfpack/screenshots/resultado.png" width="760" alt="Resultado da compressão"></p>
 
+Quer ver a diferença? Clique no **olho**, embaixo do PDF (ou aperte a tecla `\`), para alternar entre o
+original e o comprimido.
+
 Não gostou do resultado? Aperte **Ctrl+Z** para desfazer e tente outro nível.
 
 ### 3. Organize para email (opcional)
@@ -179,6 +182,8 @@ mantêm a ordem das páginas.
 | Ctrl+- | Reduzir o PDF |
 | Ctrl+0 | Voltar o PDF a 100% |
 | Ctrl+roda do mouse | Ampliar ou reduzir no ponto sob o mouse |
+| Roda do mouse apertada e arrastar | Mover o PDF, também para os lados |
+| `\` | Alternar entre o original e o comprimido (o olho) |
 
 ---
 

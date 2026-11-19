@@ -26,6 +26,8 @@ pub struct Doc {
     pub current: Bytes,
     /// Muda quando `current` muda, para o visualizador redesenhar.
     pub version: u64,
+    /// A `version` de `source`: o visualizador guarda as imagens das duas para comparar sem esperar.
+    pub source_version: u64,
     /// Largura e altura de cada página, em pontos.
     pub pages: Arc<Vec<[f32; 2]>>,
     pub checked: bool,
@@ -39,6 +41,11 @@ pub struct Doc {
 impl Doc {
     pub fn size(&self) -> u64 {
         self.current.len() as u64
+    }
+
+    /// Se há um original diferente do arquivo que será salvo, para comparar os dois.
+    pub fn has_original(&self) -> bool {
+        !Arc::ptr_eq(&self.source, &self.current)
     }
 
     /// Quanto do tamanho original foi economizado, de 0 a 100.
@@ -193,6 +200,7 @@ fn load_one(path: &Path) -> Result<Doc, String> {
     let bytes: Bytes = Arc::new(std::fs::read(path).map_err(|e| e.to_string())?);
     let pages = std::panic::catch_unwind(|| page_sizes(&bytes)).map_err(panic_text)??;
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "documento.pdf".into());
+    let version = next_id();
     Ok(Doc {
         id: next_id(),
         name,
@@ -201,7 +209,8 @@ fn load_one(path: &Path) -> Result<Doc, String> {
         base_size: bytes.len() as u64,
         source: bytes.clone(),
         current: bytes,
-        version: next_id(),
+        version,
+        source_version: version,
         pages: Arc::new(pages),
         checked: true,
         compressed: false,
@@ -266,6 +275,7 @@ fn split_one(doc: &Doc, limit: u64, tick: &mut dyn FnMut(f32) -> bool) -> Result
         .map(|(i, part)| {
             let bytes: Bytes = Arc::new(part.bytes);
             let over = bytes.len() as u64 > limit;
+            let version = next_id();
             Doc {
                 id: next_id(),
                 name: if n == 1 { doc.name.clone() } else { part_name(&doc.name, i, n) },
@@ -275,7 +285,8 @@ fn split_one(doc: &Doc, limit: u64, tick: &mut dyn FnMut(f32) -> bool) -> Result
                 base_size: if n == 1 { doc.base_size.max(bytes.len() as u64) } else { (bytes.len() as f64 * ratio) as u64 },
                 source: bytes.clone(),
                 current: bytes,
-                version: next_id(),
+                version,
+                source_version: version,
                 pages: Arc::new(doc.pages[part.pages.start.min(doc.pages.len())..part.pages.end.min(doc.pages.len())].to_vec()),
                 checked: doc.checked,
                 compressed: doc.compressed,
