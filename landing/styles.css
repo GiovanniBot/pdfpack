@@ -297,3 +297,6 @@ details[open] .faq-icon::after { transform: rotate(0deg); }
 .pix-thanks { margin-top: 14px; font-size: .88rem; color: #4a564d; min-height: 1.4em; }
 @media(max-width:850px) { .support-grid { grid-template-columns: 1fr; gap: 28px; } }
 @media(max-width:480px) { .pix-body { grid-template-columns: 1fr; justify-items: center; } .pix-qr { width: 210px; } .tier { padding: 18px 4px 16px; } .tier svg { width: 46px; height: 62px; } }
+
+/* SEO: a frase do topo diz o que o programa faz */
+.hero h1 .eyebrow{display:block;margin-bottom:20px;font:600 .8rem/1.4 monospace;letter-spacing:.11em;text-transform:uppercase;color:var(--sun)}
