@@ -173,6 +173,8 @@ details[open] .faq-icon::after { transform: rotate(0deg); }
 .questions summary:focus-visible .faq-icon { outline: 2px solid currentColor; outline-offset: 3px; }
 .answer { min-height: 0; overflow: hidden; }
 .answer p { margin: 0; padding: 0 40px 20px 0; }
+.answer ol { margin: -8px 0 20px; padding: 0 40px 0 22px; }
+.answer li + li { margin-top: 4px; }
 
 @keyframes carry-envelope {
   0% { offset-distance: 0%; opacity: 0; }
