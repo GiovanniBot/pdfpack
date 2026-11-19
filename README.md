@@ -93,7 +93,7 @@ qualidade das imagens. O texto continua nítido em todos os níveis.
 
 | Nível | Quando usar |
 | --- | --- |
-| **Mínima** | Quando as fotos e imagens precisam continuar bonitas. |
+| **Mínima** | Quando nada pode mudar na tela: as imagens ficam iguais ao original a olho nu, e sai sobretudo o que nunca aparece na página. |
 | **Média** | O equilíbrio para o dia a dia: bom para ler na tela. É o nível que já vem marcado. |
 | **Alta** | Quando o arquivo precisa ficar bem leve e a imagem pode perder qualidade. |
 | **Extrema** | Quando o tamanho importa mais que tudo. |
@@ -233,7 +233,7 @@ arquivo inteiro com *object streams*. Texto e vetores não são tocados. Os nív
 
 | Nível | Imagens em cor e cinza | JPEG | Imagens monocromáticas |
 | --- | --- | --- | --- |
-| Mínima | 150 ppi, para as acima de 225 ppi | qualidade 60 | 300 ppi, para as acima de 450 ppi |
+| Mínima | 300 ppi, para as acima de 450 ppi | qualidade 90 | 300 ppi, para as acima de 450 ppi |
 | Média | 100 ppi, para as acima de 100 ppi | qualidade 25 | 100 ppi, para as acima de 100 ppi |
 | Alta | 72 ppi, para as acima de 72 ppi | qualidade 25 | 100 ppi, para as acima de 100 ppi |
 | Extrema | 50 ppi, para as acima de 50 ppi | qualidade 12 | 72 ppi, para as acima de 72 ppi |
@@ -252,10 +252,10 @@ Medição em um livro ilustrado de 57,8 MB, em um computador de mesa comum:
 
 | Nível | Resultado | Redução |
 | --- | --- | --- |
-| Mínima | 47,7 MB | 17% |
-| Média | 29,6 MB | 49% |
-| Alta | 18,4 MB | 68% |
-| Extrema | 9,8 MB | 83% |
+| Mínima | 53,0 MB | 8% |
+| Média | 28,3 MB | 51% |
+| Alta | 17,1 MB | 70% |
+| Extrema | 8,5 MB | 85% |
 
 Cada nível levou cerca de 3 segundos. O resultado depende muito do conteúdo: PDFs feitos de fotos
 e digitalizações diminuem bastante; PDFs só de texto quase não mudam.

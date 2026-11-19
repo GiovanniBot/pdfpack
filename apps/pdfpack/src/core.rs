@@ -31,7 +31,7 @@ impl Level {
 
     pub fn hint(self) -> &'static str {
         match self {
-            Level::Minima => "150 ppi · JPEG médio · quase sem perda visível",
+            Level::Minima => "300 ppi · JPEG alto · sem perda visível",
             Level::Media => "100 ppi · JPEG mínimo · bom para leitura na tela",
             Level::Alta => "72 ppi · JPEG mínimo · imagens visivelmente mais leves",
             Level::Extrema => "50 ppi · JPEG muito baixo · menor arquivo possível",
@@ -40,9 +40,12 @@ impl Level {
 
     /// As escolhas do otimizador para o nível. `Media` é a configuração de referência do
     /// Otimizador de PDF: 100 ppi acima de 100 ppi, JPEG qualidade Mínima, CCITT grupo 4.
+    /// `Minima` só reduz o que passa de 450 ppi, mais do que a impressão pede, e regrava em JPEG
+    /// qualidade 90: no zoom, igual ao original. O grosso do que ela economiza vem do que nunca
+    /// aparece na página (a cópia de edição, os metadados das imagens, os recursos repetidos).
     pub fn settings(self) -> Settings {
         let (ppi, above, quality, mono_ppi, mono_above) = match self {
-            Level::Minima => (150.0, 225.0, 60, 300.0, 450.0),
+            Level::Minima => (300.0, 450.0, 90, 300.0, 450.0),
             Level::Media => (100.0, 100.0, 25, 100.0, 100.0),
             Level::Alta => (72.0, 72.0, 25, 100.0, 100.0),
             Level::Extrema => (50.0, 50.0, 12, 72.0, 72.0),
@@ -295,6 +298,29 @@ mod tests {
         assert!(media.len() < original.len(), "{} -> {}", original.len(), media.len());
         assert!(both.len() < media.len(), "média {} -> extrema {}", media.len(), both.len());
         assert!(both.len() * 10 <= direct.len() * 11, "por cima {} contra direto {}", both.len(), direct.len());
+    }
+
+    /// A largura em pixels das imagens de um PDF.
+    fn image_widths(bytes: &[u8]) -> Vec<i64> {
+        let doc = Document::open(Arc::new(bytes.to_vec())).expect("open");
+        doc.object_numbers()
+            .into_iter()
+            .filter_map(|n| match &*doc.get(ObjRef::new(n, doc.generation(n))) {
+                pdfcraft_cos::Object::Stream(s) if s.dict.name(b"Subtype") == Some(b"Image".as_slice()) => s.dict.int(b"Width"),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A Mínima não mexe na resolução de uma foto de 300 ppi, a de uma boa impressão; só as
+    /// outras reduzem. Antes ela levava tudo acima de 225 ppi para 150.
+    #[test]
+    fn minima_keeps_the_resolution_of_a_300_ppi_photo() {
+        let original = photo_pdf();
+        let minima = compress(&original, Level::Minima, &mut |_| true).expect("mínima");
+        assert_eq!(image_widths(&minima), vec![1200]);
+        let media = compress(&original, Level::Media, &mut |_| true).expect("média");
+        assert_eq!(image_widths(&media), vec![400]);
     }
 
     /// Com um PDF de verdade: `PDFPACK_SAMPLE=arquivo.pdf cargo test -p pdfpack --release -- --ignored --nocapture`.
