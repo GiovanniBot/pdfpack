@@ -128,7 +128,7 @@ licence = "MIT OR Apache-2.0"
 licence_file = "LICENSE-MIT"
 kind = "video"
 usage = "Demonstração na landing page"
-sha256 = "2367bd4efd4478cb725ac45eed511333c973ee74bc2f1395b7545364d5d353b5"
+sha256 = "19dd143876835300a47f7a7cc7b2f0a3dd785e346c306f67b5b28b08bf2eefd5"
 
 [[asset]]
 path = "media/compartilhar.png"
