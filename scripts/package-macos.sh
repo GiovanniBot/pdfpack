@@ -28,6 +28,8 @@ done
 sips -z 512 512 apps/pdfpack/assets/logo.png --out "$icons/icon_512x512.png" >/dev/null
 iconutil -c icns "$icons" -o "$app/Contents/Resources/PDFPack.icns"
 rm -rf "$icons"
+# Os avisos de licença das bibliotecas e arquivos embutidos, que as licenças pedem junto do programa.
+cp apps/pdfpack/LICENCAS-DE-TERCEIROS.txt "$app/Contents/Resources/"
 
 cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

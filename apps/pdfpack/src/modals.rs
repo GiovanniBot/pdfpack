@@ -438,6 +438,11 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     next = Next::Close;
                 }
             }
+            Modal::Licenses => {
+                if crate::licenses::dialog(ui) {
+                    next = Next::Close;
+                }
+            }
             Modal::Message { title, lines } => {
                 heading(ui, Icon::Alert, DANGER, title, "");
                 egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
@@ -481,6 +486,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             | Modal::CompressDone { .. }
             | Modal::OrganizeDone { .. }
             | Modal::Message { .. }
+            | Modal::Licenses
             | Modal::Donate { .. }
             | Modal::UpdateOffer { .. }
             | Modal::UpdateDone { .. }
@@ -494,7 +500,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         next = match app.modal {
             Modal::CompressSetup if app.state.docs.iter().any(|d| d.checked) => Next::Compress,
             Modal::OrganizeSetup => Next::Organize,
-            Modal::CompressDone { .. } | Modal::OrganizeDone { .. } | Modal::Message { .. } | Modal::Donate { .. } => Next::Close,
+            Modal::CompressDone { .. } | Modal::OrganizeDone { .. } | Modal::Message { .. } | Modal::Licenses | Modal::Donate { .. } => Next::Close,
             _ => Next::Stay,
         };
     }

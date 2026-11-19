@@ -54,11 +54,21 @@ pub fn toolbar(app: &mut App, ui: &mut Ui) {
                 ui.set_width(250.0);
                 ui.label(RichText::new(format!("PDFPack {}", crate::update::VERSION)).font(theme::semibold(14.0)));
                 ui.label(RichText::new("Feito sobre o motor do PDFCraft").color(MUTED).size(12.0));
+                ui.add_space(4.0);
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
+                if resp.hovered() {
+                    ui.painter().rect_filled(rect, 7, CARD_HOVER);
+                }
+                Icon::File.paint(ui, pos2(rect.min.x + 14.0, rect.center().y), 15.0, MUTED);
+                ui.painter().text(pos2(rect.min.x + 30.0, rect.center().y), Align2::LEFT_CENTER, "Licenças de terceiros", theme::regular(13.5), TEXT);
+                if resp.clicked() {
+                    app.modal = Modal::Licenses;
+                    ui.close();
+                }
                 // Atualização e instalação próprias só existem no Windows.
                 if !cfg!(windows) {
                     return;
                 }
-                ui.add_space(4.0);
                 let auto = app.prefs.auto_update == Some(true);
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
                 if resp.hovered() {

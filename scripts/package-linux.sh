@@ -17,6 +17,8 @@ mkdir -p "$dir"
 cp "$target_dir/release/pdfpack" "$dir/pdfpack"
 cp apps/pdfpack/assets/icon.png "$dir/pdfpack.png"
 cp apps/pdfpack/assets/linux/pdfpack.desktop apps/pdfpack/assets/linux/instalar.sh apps/pdfpack/assets/linux/LEIA-ME.txt "$dir/"
+# Os avisos de licença das bibliotecas e arquivos embutidos, que as licenças pedem junto do programa.
+cp apps/pdfpack/LICENCAS-DE-TERCEIROS.txt "$dir/"
 chmod +x "$dir/pdfpack" "$dir/instalar.sh"
 tar -C dist -czf dist/pdfpack-linux-x86_64.tar.gz pdfpack-linux-x86_64
 echo "Pronto: dist/pdfpack-linux-x86_64.tar.gz ($version)"

@@ -9,6 +9,7 @@ mod donate;
 mod donate_data;
 mod icons;
 mod install;
+mod licenses;
 mod list;
 mod modals;
 mod pick;
@@ -130,6 +131,8 @@ pub enum Modal {
         changed: Vec<Reshaped>,
     },
     Saving(Arc<Progress>),
+    /// Os avisos de licença de tudo o que vai dentro do PDFPack (`licenses.rs`).
+    Licenses,
     /// A doação pelo Pix: o valor escolhido e quando o código foi copiado.
     Donate {
         tier: usize,

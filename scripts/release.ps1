@@ -13,6 +13,10 @@ if (git status --porcelain) { throw "Há mudanças sem commit: faça o commit an
 gh release view $tag --repo $repo *> $null
 if ($LASTEXITCODE -eq 0) { throw "A release $tag já existe: aumente a versão em apps/pdfpack/Cargo.toml." }
 
+# Os avisos de licença embutidos precisam cobrir as dependências desta versão.
+python scripts/licencas.py --check
+if ($LASTEXITCODE -ne 0) { throw "Rode python scripts/licencas.py e faça o commit do arquivo de licenças." }
+
 cargo build --release -p pdfpack
 if ($LASTEXITCODE -ne 0) { throw "A compilação falhou." }
 $exe = "target/release/pdfpack.exe"
