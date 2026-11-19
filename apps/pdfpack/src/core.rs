@@ -114,6 +114,17 @@ fn write_pages(src: &Document, pages: std::ops::Range<usize>) -> Result<Vec<u8>,
     write_full(&doc, &SaveOptions { object_streams: true, ..SaveOptions::default() }).map_err(|e| e.to_string())
 }
 
+/// As mesmas páginas de outro arquivo do mesmo PDF: com elas cada parte de um PDF comprimido e
+/// dividido guarda o seu original. Um arquivo com outro número de páginas não serve.
+pub fn same_pages(bytes: &Bytes, ranges: &[std::ops::Range<usize>]) -> Result<Vec<Vec<u8>>, String> {
+    let src = Document::open(bytes.clone()).map_err(|e| e.to_string())?;
+    let n = pdfcraft_organize::page_count(&src).map_err(|e| e.to_string())?;
+    if ranges.iter().any(|r| r.start >= r.end || r.end > n) {
+        return Err("o original não tem as mesmas páginas".into());
+    }
+    ranges.iter().map(|r| write_pages(&src, r.clone())).collect()
+}
+
 /// Divide `bytes` em partes de no máximo `max_bytes`, em ordem de página, cada uma com o maior
 /// número de páginas que cabe (medido no arquivo de verdade, não estimado). Uma página sozinha
 /// maior que o limite vira uma parte só dela.
@@ -223,6 +234,57 @@ pub fn human_size(bytes: u64) -> String {
     if mb >= 1.0 { format!("{mb:.1} MB").replace('.', ",") } else { format!("{:.0} KB", (bytes as f64 / 1024.0).max(1.0)) }
 }
 
+/// PDFs sintéticos para os testes deste e de outros módulos.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    use super::*;
+    use pdfcraft_cos::{Dict, Object, Stream};
+
+    /// Um PDF de `count` páginas de 4 × 4 polegadas, cada uma com uma foto sintética diferente de
+    /// `side` × `side` px.
+    pub fn photos(count: usize, side: u32) -> Bytes {
+        let mut doc = Document::new_empty();
+        let pages = doc.root().and_then(|r| doc.get(r).as_dict().and_then(|d| d.reference(b"Pages"))).expect("pages");
+        let mut kids = Vec::new();
+        for n in 0..count {
+            let shift = (n as u32).wrapping_mul(37);
+            let mut px = Vec::with_capacity((side * side * 3) as usize);
+            for y in 0..side {
+                for x in 0..side {
+                    let t = ((x ^ y ^ shift) & 15) as u8;
+                    px.extend([(x * 255 / side) as u8 ^ t, (y * 255 / side) as u8 ^ (shift as u8), ((x + y) * 127 / side) as u8 ^ (t << 2)]);
+                }
+            }
+            let mut d = Dict::new();
+            d.set(b"Type".to_vec(), Object::name("XObject"));
+            d.set(b"Subtype".to_vec(), Object::name("Image"));
+            d.set(b"Width".to_vec(), Object::Int(side as i64));
+            d.set(b"Height".to_vec(), Object::Int(side as i64));
+            d.set(b"BitsPerComponent".to_vec(), Object::Int(8));
+            d.set(b"ColorSpace".to_vec(), Object::name("DeviceRGB"));
+            let img = doc.add(Object::Stream(Stream::flate(d, &px)));
+            let mut x = Dict::new();
+            x.set(b"Im".to_vec(), Object::Ref(img));
+            let mut res = Dict::new();
+            res.set(b"XObject".to_vec(), Object::Dict(x));
+            let c = doc.add(Object::Stream(Stream::from_raw(Dict::new(), b"q 288 0 0 288 0 0 cm /Im Do Q".to_vec())));
+            let mut p = Dict::new();
+            p.set(b"Type".to_vec(), Object::name("Page"));
+            p.set(b"Parent".to_vec(), Object::Ref(pages));
+            p.set(b"MediaBox".to_vec(), Object::Array(vec![0.into(), 0.into(), 288.into(), 288.into()]));
+            p.set(b"Resources".to_vec(), Object::Dict(res));
+            p.set(b"Contents".to_vec(), Object::Ref(c));
+            kids.push(Object::Ref(doc.add(Object::Dict(p))));
+        }
+        doc.update_dict(pages, |d| {
+            d.set(b"Count".to_vec(), Object::Int(kids.len() as i64));
+            d.set(b"Kids".to_vec(), Object::Array(kids));
+        })
+        .expect("pages");
+        Arc::new(write_full(&doc, &SaveOptions::default()).expect("save"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,43 +309,7 @@ mod tests {
 
     /// Um PDF de uma página com uma foto sintética de 1200 × 1200 px em 4 × 4 polegadas (300 ppi).
     fn photo_pdf() -> Bytes {
-        use pdfcraft_cos::{Dict, Object, Stream};
-        let side = 1200u32;
-        let mut px = Vec::with_capacity((side * side * 3) as usize);
-        for y in 0..side {
-            for x in 0..side {
-                let t = ((x ^ y) & 15) as u8;
-                px.extend([(x * 255 / side) as u8 ^ t, (y * 255 / side) as u8, ((x + y) * 127 / side) as u8 ^ (t << 2)]);
-            }
-        }
-        let mut doc = Document::new_empty();
-        let mut d = Dict::new();
-        d.set(b"Type".to_vec(), Object::name("XObject"));
-        d.set(b"Subtype".to_vec(), Object::name("Image"));
-        d.set(b"Width".to_vec(), Object::Int(side as i64));
-        d.set(b"Height".to_vec(), Object::Int(side as i64));
-        d.set(b"BitsPerComponent".to_vec(), Object::Int(8));
-        d.set(b"ColorSpace".to_vec(), Object::name("DeviceRGB"));
-        let img = doc.add(Object::Stream(Stream::flate(d, &px)));
-        let pages = doc.root().and_then(|r| doc.get(r).as_dict().and_then(|d| d.reference(b"Pages"))).expect("pages");
-        let mut x = Dict::new();
-        x.set(b"Im".to_vec(), Object::Ref(img));
-        let mut res = Dict::new();
-        res.set(b"XObject".to_vec(), Object::Dict(x));
-        let c = doc.add(Object::Stream(Stream::from_raw(Dict::new(), b"q 288 0 0 288 0 0 cm /Im Do Q".to_vec())));
-        let mut p = Dict::new();
-        p.set(b"Type".to_vec(), Object::name("Page"));
-        p.set(b"Parent".to_vec(), Object::Ref(pages));
-        p.set(b"MediaBox".to_vec(), Object::Array(vec![0.into(), 0.into(), 288.into(), 288.into()]));
-        p.set(b"Resources".to_vec(), Object::Dict(res));
-        p.set(b"Contents".to_vec(), Object::Ref(c));
-        let page = doc.add(Object::Dict(p));
-        doc.update_dict(pages, |d| {
-            d.set(b"Kids".to_vec(), Object::Array(vec![Object::Ref(page)]));
-            d.set(b"Count".to_vec(), Object::Int(1));
-        })
-        .expect("pages");
-        Arc::new(write_full(&doc, &SaveOptions::default()).expect("save"))
+        fixtures::photos(1, 1200)
     }
 
     /// Comprimir na Extrema um arquivo já comprimido na Média ainda diminui, e não fica muito

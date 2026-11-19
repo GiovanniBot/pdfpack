@@ -269,24 +269,54 @@ fn split_one(doc: &Doc, limit: u64, tick: &mut dyn FnMut(f32) -> bool) -> Result
     let n = parts.len();
     // A economia de cada parte é a do arquivo inteiro: a compressão foi feita antes de dividir.
     let ratio = doc.base_size as f64 / doc.size().max(1) as f64;
+    // O original de cada parte: as mesmas páginas do original do PDF inteiro. É com ele que o olho
+    // compara e é dele que uma nova compressão parte. Inteiro, o original é o próprio arquivo. Se as
+    // páginas não puderem ser tiradas do original, a parte segue sem ele em vez de a divisão falhar.
+    let originals: Vec<Option<Bytes>> = if n == 1 {
+        vec![Some(doc.source.clone())]
+    } else if doc.has_original() {
+        let ranges: Vec<_> = parts.iter().map(|p| p.pages.clone()).collect();
+        match core::same_pages(&doc.source, &ranges) {
+            Ok(files) => files.into_iter().map(|f| Some(Arc::new(f))).collect(),
+            Err(_) => vec![None; n],
+        }
+    } else {
+        vec![None; n]
+    };
     Ok(parts
         .into_iter()
+        .zip(originals)
         .enumerate()
-        .map(|(i, part)| {
+        .map(|(i, (part, original))| {
             let bytes: Bytes = Arc::new(part.bytes);
             let over = bytes.len() as u64 > limit;
             let version = next_id();
+            let source = original.unwrap_or_else(|| bytes.clone());
+            let base_size = if n == 1 {
+                // Inteiro, o arquivo guarda o tamanho de origem: a lista mostra o que a regravação tirou.
+                doc.base_size.max(bytes.len() as u64)
+            } else if Arc::ptr_eq(&source, &bytes) {
+                (bytes.len() as f64 * ratio) as u64
+            } else {
+                source.len().max(bytes.len()) as u64
+            };
             Doc {
                 id: next_id(),
                 name: if n == 1 { doc.name.clone() } else { part_name(&doc.name, i, n) },
                 path: None,
                 modified: doc.modified,
-                // Inteiro, o arquivo guarda o tamanho de origem: a lista mostra o que a regravação tirou.
-                base_size: if n == 1 { doc.base_size.max(bytes.len() as u64) } else { (bytes.len() as f64 * ratio) as u64 },
-                source: bytes.clone(),
+                base_size,
+                // Inteiro, o original é o mesmo de antes: as imagens dele já desenhadas continuam valendo.
+                source_version: if Arc::ptr_eq(&source, &bytes) {
+                    version
+                } else if n == 1 {
+                    doc.source_version
+                } else {
+                    next_id()
+                },
+                source,
                 current: bytes,
                 version,
-                source_version: version,
                 pages: Arc::new(doc.pages[part.pages.start.min(doc.pages.len())..part.pages.end.min(doc.pages.len())].to_vec()),
                 checked: doc.checked,
                 compressed: doc.compressed,
@@ -448,4 +478,73 @@ pub fn spawn_update(release: crate::update::Release, progress: Arc<Progress>, tx
         let _ = tx.send(Msg::Updated(result.map(|()| release.version.clone())));
         ctx.request_repaint();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page_count(bytes: &Bytes) -> usize {
+        pdfcraft_organize::page_count(&pdfcraft_cos::Document::open(bytes.clone()).expect("open")).expect("pages")
+    }
+
+    /// Organizar para email dividiu um PDF comprimido: cada parte guarda as mesmas páginas do
+    /// original, para o olho comparar. Antes o original de uma parte era a própria parte comprimida.
+    #[test]
+    fn parts_of_a_split_pdf_keep_their_original_pages() {
+        let original = core::fixtures::photos(4, 600);
+        let compressed: Bytes = Arc::new(core::compress(&original, Level::Media, &mut |_| true).expect("comprime"));
+        let doc = Doc {
+            id: 1,
+            name: "a.pdf".into(),
+            path: None,
+            modified: None,
+            source: original.clone(),
+            current: compressed.clone(),
+            version: 2,
+            source_version: 1,
+            pages: Arc::new(vec![[288.0, 288.0]; 4]),
+            checked: true,
+            compressed: true,
+            base_size: original.len() as u64,
+            error: None,
+        };
+        let limit = (compressed.len() as u64 * 6 / 10).max(1);
+        let parts = split_one(&doc, limit, &mut |_| true).expect("divide");
+        assert!(parts.len() > 1, "{} partes", parts.len());
+        assert_eq!(parts.iter().map(|p| p.pages.len()).sum::<usize>(), 4);
+        for part in &parts {
+            assert!(part.has_original(), "{}", part.name);
+            assert_ne!(part.source_version, part.version);
+            assert_eq!(page_count(&part.source), part.pages.len());
+            assert_eq!(page_count(&part.current), part.pages.len());
+            assert!(part.source.len() > part.current.len(), "o original da parte é o arquivo sem compressão");
+        }
+    }
+
+    /// Um PDF que coube inteiro depois de regravado continua comparável com o original de sempre.
+    #[test]
+    fn a_pdf_rewritten_whole_keeps_its_original() {
+        let original = core::fixtures::photos(2, 300);
+        let compressed: Bytes = Arc::new(core::compress(&original, Level::Media, &mut |_| true).expect("comprime"));
+        let doc = Doc {
+            id: 1,
+            name: "a.pdf".into(),
+            path: None,
+            modified: None,
+            source: original.clone(),
+            current: compressed.clone(),
+            version: 2,
+            source_version: 1,
+            pages: Arc::new(vec![[288.0, 288.0]; 2]),
+            checked: true,
+            compressed: true,
+            base_size: original.len() as u64,
+            error: None,
+        };
+        let parts = split_one(&doc, u64::MAX, &mut |_| true).expect("divide");
+        assert_eq!(parts.len(), 1);
+        assert!(Arc::ptr_eq(&parts[0].source, &original));
+        assert_eq!(parts[0].source_version, 1);
+    }
 }
