@@ -89,6 +89,8 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .platform-list a { padding: 14px; border: 1px solid var(--rule); border-radius: 8px; }
 .platform-list a:is(:hover,:focus-visible) { background: var(--sun); }
 .platform-list span { font-size: .85rem; }
+.download-status { margin-top: 16px; padding: 12px 14px; border-radius: 8px; background: #fff6c2; line-height: 1.45; }
+.platform-list a.chosen { border-color: #19241f; }
 .demo-link { width: fit-content; }
 .footer-repo { display: inline-flex; align-items: center; gap: 9px; }
 .footer-repo img { border-radius: 50%; object-fit: cover; }
@@ -171,6 +173,8 @@ details[open] .faq-icon::after { transform: rotate(0deg); }
 .questions summary:focus-visible .faq-icon { outline: 2px solid currentColor; outline-offset: 3px; }
 .answer { min-height: 0; overflow: hidden; }
 .answer p { margin: 0; padding: 0 40px 20px 0; }
+.answer ol { margin: -8px 0 20px; padding: 0 40px 0 22px; }
+.answer li + li { margin-top: 4px; }
 
 @keyframes carry-envelope {
   0% { offset-distance: 0%; opacity: 0; }

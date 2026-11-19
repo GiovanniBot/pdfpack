@@ -109,6 +109,14 @@
    },
    {
     "@type": "Question",
+    "name": "O Windows disse que protegeu o computador. Como instalar?",
+    "acceptedAnswer": {
+     "@type": "Answer",
+     "text": "Na janela azul \"O Windows protegeu o computador\", clique em Mais informações e depois em Executar assim mesmo. Se o navegador avisar que o arquivo não é baixado com frequência, escolha Manter. O aviso aparece porque o PDFPack é novo e não tem uma assinatura digital paga, que custa caro por ano para um projeto gratuito. O Windows avisa sobre todo programa que ainda tem poucos downloads, mesmo sem nada de errado com ele. Baixe sempre deste site ou da página oficial no GitHub, onde o código é aberto para qualquer pessoa conferir."
+    }
+   },
+   {
+    "@type": "Question",
     "name": "Posso só comprimir e salvar?",
     "acceptedAnswer": {
      "@type": "Answer",
@@ -193,6 +201,7 @@
     <details><summary>Quanto o PDF diminui?<span class="faq-icon" aria-hidden="true"></span></summary><div class="answer"><p>Depende do conteúdo. PDFs com fotos e páginas digitalizadas costumam diminuir bastante: um livro ilustrado de 57,8 MB ficou com 8,5 MB no nível Extrema. PDFs só de texto já são leves e mudam pouco.</p></div></details>
     <details><summary>Meus documentos vão para a internet?<span class="faq-icon" aria-hidden="true"></span></summary><div class="answer"><p>Não. A compressão e a organização acontecem no seu computador, sem enviar seus PDFs para nenhum site. O aplicativo só consulta a internet para verificar atualizações.</p></div></details>
     <details><summary>Qual arquivo devo baixar?<span class="faq-icon" aria-hidden="true"></span></summary><div class="answer"><p>No Windows, abra o arquivo .exe. No macOS, descompacte o .zip para encontrar o PDFPack.app. No Linux x86_64, extraia o .tar.gz e siga as instruções incluídas no pacote.</p></div></details>
+    <details><summary>O Windows disse que protegeu o computador. Como instalar?<span class="faq-icon" aria-hidden="true"></span></summary><div class="answer"><p>Na primeira vez, o Windows pode mostrar a janela azul “O Windows protegeu o computador”. Para continuar:</p><ol><li>Clique em <strong>Mais informações</strong>.</li><li>Clique em <strong>Executar assim mesmo</strong>.</li></ol><p>Se o navegador avisar que o arquivo “não é baixado com frequência”, abra a lista de downloads e escolha <strong>Manter</strong>.</p><p><strong>Por que o aviso aparece?</strong> O Windows avisa sobre todo programa novo que ainda tem poucos downloads e não tem uma assinatura digital paga, um certificado que custa caro todo ano para um projeto gratuito. O aviso não quer dizer que há algo errado com o PDFPack: o código é aberto para qualquer pessoa conferir, e o aplicativo funciona sem enviar seus PDFs para a internet. Baixe sempre por este site ou pela página oficial no GitHub.</p></div></details>
     <details><summary>Posso só comprimir e salvar?<span class="faq-icon" aria-hidden="true"></span></summary><div class="answer"><p>Sim. Arraste os PDFs, escolha o nível de compressão e salve as cópias. A organização por e-mail é opcional, e seus arquivos originais ficam intactos.</p></div></details>
   </div>
 </section>
@@ -218,10 +227,11 @@
     <h2 id="dialog-title">Baixar PDFPack</h2>
     <form method="dialog"><button class="close-dialog" aria-label="Fechar">×</button></form>
   </div>
+  <p class="download-status" id="download-status" role="status" hidden></p>
   <div class="platform-list">
-    <a data-system="windows" href="https://github.com/GiovanniBot/pdfpack/releases/latest/download/pdfpack.exe"><strong>Windows</strong><span>.exe</span></a>
-    <a data-system="macos" href="https://github.com/GiovanniBot/pdfpack/releases/latest/download/PDFPack-macos.zip"><strong>macOS</strong><span>.zip</span></a>
-    <a data-system="linux" href="https://github.com/GiovanniBot/pdfpack/releases/latest/download/pdfpack-linux-x86_64.tar.gz"><strong>Linux</strong><span>x86_64 · .tar.gz</span></a>
+    <a data-system="windows" target="_blank" rel="noopener" href="https://github.com/GiovanniBot/pdfpack/releases/latest/download/pdfpack.exe"><strong>Windows</strong><span>.exe</span></a>
+    <a data-system="macos" target="_blank" rel="noopener" href="https://github.com/GiovanniBot/pdfpack/releases/latest/download/PDFPack-macos.zip"><strong>macOS</strong><span>.zip</span></a>
+    <a data-system="linux" target="_blank" rel="noopener" href="https://github.com/GiovanniBot/pdfpack/releases/latest/download/pdfpack-linux-x86_64.tar.gz"><strong>Linux</strong><span>x86_64 · .tar.gz</span></a>
   </div>
 </dialog>
 <dialog id="pix-dialog" aria-labelledby="pix-title">
